@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -70,7 +73,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ExitCode: msg.exitCode,
 			Duration: msg.duration,
 		}
-		return m, nil
+		return m, tea.EnterAltScreen
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -136,28 +139,68 @@ func (m model) handleTargetKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// makeExec wraps a make command + "press Enter" wait into a single tea.ExecCommand.
+type makeExec struct {
+	project  string
+	dir      string
+	makeArgs []string
+	start    time.Time
+	exitCode int
+	duration time.Duration
+}
+
+func (m *makeExec) Run() error {
+	sep := strings.Repeat("━", 50)
+	fmt.Printf("\n%s\n▶ make %s  (%s)\n%s\n\n", sep, strings.Join(m.makeArgs, " "), m.project, sep)
+
+	c := exec.Command("make", m.makeArgs...)
+	c.Dir = m.dir
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+
+	err := c.Run()
+	m.duration = time.Since(m.start)
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			m.exitCode = exitErr.ExitCode()
+		} else {
+			m.exitCode = 1
+		}
+	}
+
+	status := "✓ success"
+	if m.exitCode != 0 {
+		status = fmt.Sprintf("✗ exit %d", m.exitCode)
+	}
+	fmt.Printf("\n%s\n%s (%s)\nPress Enter to return to mkx...", sep, status, m.duration.Round(time.Second))
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
+
+	return err
+}
+
+func (m *makeExec) SetStdin(r io.Reader)  { /* handled in Run */ }
+func (m *makeExec) SetStdout(w io.Writer) { /* handled in Run */ }
+func (m *makeExec) SetStderr(w io.Writer) { /* handled in Run */ }
+
 func (m model) runTarget(proj project, t target, args string) tea.Cmd {
-	makeArgs := []string{"-C", proj.Path, t.Name}
+	makeArgs := []string{t.Name}
 	if args != "" {
 		makeArgs = append(makeArgs, args)
 	}
-	c := exec.Command("make", makeArgs...)
 
-	start := time.Now()
+	me := &makeExec{
+		project:  proj.Name,
+		dir:      proj.Path,
+		makeArgs: makeArgs,
+		start:    time.Now(),
+	}
 
-	return tea.ExecProcess(c, func(err error) tea.Msg {
-		duration := time.Since(start)
-		exitCode := 0
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			} else {
-				exitCode = 1
-			}
-		}
+	return tea.Exec(me, func(err error) tea.Msg {
 		return execFinishedMsg{
-			exitCode: exitCode,
-			duration: duration,
+			exitCode: me.exitCode,
+			duration: me.duration,
 		}
 	})
 }
