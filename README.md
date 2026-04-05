@@ -1,5 +1,10 @@
 # mkx
 
+[![CI](https://github.com/Gaetan-Jaminon/mkx/actions/workflows/ci.yml/badge.svg)](https://github.com/Gaetan-Jaminon/mkx/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Gaetan-Jaminon/mkx)](https://github.com/Gaetan-Jaminon/mkx/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/Gaetan-Jaminon/mkx)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Make target runner TUI with k9s-style navigation.
 
 Discover projects in a workspace, browse their Make targets, and run them with full terminal handover.
