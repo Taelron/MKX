@@ -178,15 +178,40 @@ func (m model) renderProjectList() string {
 	if len(m.projects) == 0 {
 		s += "  No projects with Makefiles found.\n"
 	} else {
-		s += fmt.Sprintf("  %-40s %s\n", "PROJECT", "TARGETS")
-		s += "  " + strings.Repeat("─", 50) + "\n"
+		// dynamic column width from longest project name
+		colWidth := len("PROJECT")
+		for _, p := range m.projects {
+			if len(p.Name) > colWidth {
+				colWidth = len(p.Name)
+			}
+		}
+		colWidth += 4
 
-		for i, p := range m.projects {
+		s += fmt.Sprintf("  %-*s %s\n", colWidth, "PROJECT", "TARGETS")
+		s += "  " + strings.Repeat("─", colWidth+10) + "\n"
+
+		// scrollable viewport: 5 lines reserved for header + hint bar
+		maxVisible := m.height - 5
+		if maxVisible < 1 {
+			maxVisible = 1
+		}
+
+		offset := 0
+		if m.projectCursor >= maxVisible {
+			offset = m.projectCursor - maxVisible + 1
+		}
+		end := offset + maxVisible
+		if end > len(m.projects) {
+			end = len(m.projects)
+		}
+
+		for i := offset; i < end; i++ {
+			p := m.projects[i]
 			cursor := "  "
 			if i == m.projectCursor {
 				cursor = "> "
 			}
-			line := fmt.Sprintf("%s%-40s %d", cursor, p.Name, len(p.Targets))
+			line := fmt.Sprintf("%s%-*s %d", cursor, colWidth, p.Name, len(p.Targets))
 			if i == m.projectCursor {
 				s += selectedStyle.Render(line) + "\n"
 			} else {
@@ -213,10 +238,33 @@ func (m model) renderTargetList() string {
 	if len(proj.Targets) == 0 {
 		s += "  No targets found.\n"
 	} else {
-		s += fmt.Sprintf("  %-25s %s\n", "TARGET", "DESCRIPTION")
-		s += "  " + strings.Repeat("─", 50) + "\n"
+		colWidth := len("TARGET")
+		for _, t := range proj.Targets {
+			if len(t.Name) > colWidth {
+				colWidth = len(t.Name)
+			}
+		}
+		colWidth += 4
 
-		for i, t := range proj.Targets {
+		s += fmt.Sprintf("  %-*s %s\n", colWidth, "TARGET", "DESCRIPTION")
+		s += "  " + strings.Repeat("─", colWidth+30) + "\n"
+
+		maxVisible := m.height - 5
+		if maxVisible < 1 {
+			maxVisible = 1
+		}
+
+		offset := 0
+		if m.targetCursor >= maxVisible {
+			offset = m.targetCursor - maxVisible + 1
+		}
+		end := offset + maxVisible
+		if end > len(proj.Targets) {
+			end = len(proj.Targets)
+		}
+
+		for i := offset; i < end; i++ {
+			t := proj.Targets[i]
 			cursor := "  "
 			if i == m.targetCursor {
 				cursor = "> "
@@ -225,7 +273,7 @@ func (m model) renderTargetList() string {
 			if desc == "" {
 				desc = "-"
 			}
-			line := fmt.Sprintf("%s%-25s %s", cursor, t.Name, desc)
+			line := fmt.Sprintf("%s%-*s %s", cursor, colWidth, t.Name, desc)
 			if i == m.targetCursor {
 				s += selectedStyle.Render(line) + "\n"
 			} else {
