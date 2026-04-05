@@ -4,12 +4,14 @@ Make target runner TUI with k9s-style navigation.
 
 Discover projects in a workspace, browse their Make targets, and run them with full terminal handover.
 
-## Features (MVP)
+## Features
 
 - Recursive Makefile discovery with configurable depth and exclusions
 - Project list / target list navigation (j/k, Enter, Esc)
 - Target descriptions from `## comment` convention
-- Full terminal handover via `tea.ExecProcess` — interactive prompts work natively
+- Full terminal handover — interactive prompts work natively
+- Git pull and refresh targets with `g` key
+- README viewer with rendered markdown via `?` key
 - Status bar with exit code and duration
 
 ## Install
@@ -40,7 +42,7 @@ mkx
 | j/k, arrows | Navigate | Navigate |
 | Enter | Drill into project | Run target |
 | r | - | Run target |
-| / | Filter | Filter |
+| g | Git pull & refresh | Git pull & refresh |
 | ? | View README | View README |
 | Esc | - | Back |
 | q | Quit | Quit |
