@@ -39,6 +39,9 @@ type model struct {
 	// last run
 	lastRun *runResult
 
+	// flash message
+	flash string
+
 	// terminal size
 	width  int
 	height int
@@ -68,6 +71,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
+	case readmeNotFoundMsg:
+		m.flash = "No README.md found"
+		return m, nil
+
 	case execFinishedMsg:
 		m.lastRun = &runResult{
 			ExitCode: msg.exitCode,
@@ -83,6 +90,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.flash = ""
 	switch m.view {
 	case viewProjects:
 		return m.handleProjectKeys(msg)
@@ -110,6 +118,11 @@ func (m model) handleProjectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.targetCursor = 0
 			m.view = viewTargets
 		}
+	case "?":
+		if len(m.projects) > 0 {
+			m.flash = ""
+			return m, viewReadme(m.projects[m.projectCursor])
+		}
 	}
 	return m, nil
 }
@@ -135,6 +148,9 @@ func (m model) handleTargetKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(proj.Targets) > 0 {
 			return m, m.runTarget(proj, proj.Targets[m.targetCursor], "")
 		}
+	case "?":
+		m.flash = ""
+		return m, viewReadme(proj)
 	}
 	return m, nil
 }
@@ -269,7 +285,11 @@ func (m model) renderProjectList() string {
 		s += "\n"
 	}
 
-	s += hintBarStyle.Render("  / filter   Enter drill in   ? readme   q quit")
+	hint := "  Enter drill in   ? readme   q quit"
+	if m.flash != "" {
+		hint += "   " + m.flash
+	}
+	s += hintBarStyle.Render(hint)
 	return s
 }
 
