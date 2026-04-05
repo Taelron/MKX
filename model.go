@@ -75,6 +75,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flash = "No README.md found"
 		return m, nil
 
+	case gitPullFinishedMsg:
+		targets, _ := parseTargets(m.projects[msg.projectIndex].Path)
+		m.projects[msg.projectIndex].Targets = targets
+		if msg.err == nil {
+			m.flash = "Pulled & refreshed"
+		} else {
+			m.flash = fmt.Sprintf("Pull failed: %v", msg.err)
+		}
+		if m.view == viewTargets {
+			m.targetCursor = 0
+		}
+		return m, tea.EnterAltScreen
+
 	case execFinishedMsg:
 		m.lastRun = &runResult{
 			ExitCode: msg.exitCode,
@@ -123,6 +136,10 @@ func (m model) handleProjectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.flash = ""
 			return m, viewReadme(m.projects[m.projectCursor])
 		}
+	case "g":
+		if len(m.projects) > 0 {
+			return m, gitPull(m.projectCursor, m.projects[m.projectCursor])
+		}
 	}
 	return m, nil
 }
@@ -151,6 +168,8 @@ func (m model) handleTargetKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.flash = ""
 		return m, viewReadme(proj)
+	case "g":
+		return m, gitPull(m.selectedProject, proj)
 	}
 	return m, nil
 }
@@ -285,7 +304,7 @@ func (m model) renderProjectList() string {
 		s += "\n"
 	}
 
-	hint := "  Enter drill in   ? readme   q quit"
+	hint := "  Enter drill in   g pull   ? readme   q quit"
 	if m.flash != "" {
 		hint += "   " + m.flash
 	}
@@ -351,7 +370,7 @@ func (m model) renderTargetList() string {
 		s += "\n"
 	}
 
-	hint := "  / filter   r run   ? readme   Esc back"
+	hint := "  r run   g pull   ? readme   Esc back"
 	if m.lastRun != nil {
 		status := "✓"
 		if m.lastRun.ExitCode != 0 {
