@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,9 +21,10 @@ var defaultExcludes = map[string]bool{
 }
 
 type project struct {
-	Name    string
-	Path    string
-	Targets []target
+	Name        string
+	Path        string
+	Description string
+	Targets     []target
 }
 
 func scanWorkspace(root string, excludes map[string]bool, maxDepth int) ([]project, error) {
@@ -66,9 +68,10 @@ func scanWorkspace(root string, excludes map[string]bool, maxDepth int) ([]proje
 			if _, err := fs.Stat(os.DirFS(path), mf); err == nil {
 				targets, _ := parseTargets(path)
 				projects = append(projects, project{
-					Name:    rel,
-					Path:    path,
-					Targets: targets,
+					Name:        rel,
+					Path:        path,
+					Description: readProjectDescription(path),
+					Targets:     targets,
 				})
 				break
 			}
@@ -78,4 +81,28 @@ func scanWorkspace(root string, excludes map[string]bool, maxDepth int) ([]proje
 	})
 
 	return projects, err
+}
+
+// readProjectDescription extracts the first non-heading, non-empty line from README.md.
+func readProjectDescription(dir string) string {
+	path := findReadme(dir)
+	if path == "" {
+		return ""
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return line
+	}
+	return ""
 }

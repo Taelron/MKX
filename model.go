@@ -10,6 +10,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type view int
@@ -250,32 +252,97 @@ func (m model) View() string {
 	return ""
 }
 
+func (m model) renderHintBar(hints [][]string) string {
+	var parts []string
+	for _, h := range hints {
+		parts = append(parts, hintKeyStyle.Render("<"+h[0]+">")+" "+hintActionStyle.Render(h[1]))
+	}
+	bar := strings.Join(parts, "  ")
+	if m.flash != "" {
+		bar += "  " + flashStyle.Render(m.flash)
+	}
+	return hintBarStyle.Width(m.width).Render(bar)
+}
+
+func (m model) renderHeader(section string, current, total int) string {
+	title := "mkx › " + section
+	left := headerStyle.Render(title)
+	count := headerCountStyle.Render(fmt.Sprintf("%d/%d", current, total))
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(count)
+	if gap < 0 {
+		gap = 0
+	}
+	return left + strings.Repeat(" ", gap) + count
+}
+
+// borderedRow wraps content with │ on each side, clamped to exactly w display columns.
+func borderedRow(content string, w int, style lipgloss.Style) string {
+	dw := runewidth.StringWidth(content)
+	if dw > w {
+		// truncate to fit
+		truncated := ""
+		col := 0
+		for _, r := range content {
+			rw := runewidth.RuneWidth(r)
+			if col+rw >= w {
+				break
+			}
+			truncated += string(r)
+			col += rw
+		}
+		content = truncated + "…"
+		dw = runewidth.StringWidth(content)
+	}
+	if dw < w {
+		content += strings.Repeat(" ", w-dw)
+	}
+	b := borderStyle.Render("│")
+	return b + style.Render(content) + b
+}
+
 func (m model) renderProjectList() string {
-	s := headerStyle.Render("mkx") + "\n\n"
+	w := m.width
+	if w < 20 {
+		w = 80
+	}
+
+	iw := w - 2 // inner width (excluding │ borders)
+
+	// header
+	s := m.renderHeader("Projects", m.projectCursor+1, len(m.projects)) + "\n"
+	s += borderStyle.Render("┌" + strings.Repeat("─", iw) + "┐") + "\n"
 
 	if len(m.projects) == 0 {
-		s += "  No projects with Makefiles found.\n"
+		s += borderedRow("  No projects with Makefiles found.", iw, normalRowStyle) + "\n"
 	} else {
-		// dynamic column width from longest project name
-		colWidth := len("PROJECT")
+		// column widths
+		nameCol := len("PROJECT")
 		for _, p := range m.projects {
-			if len(p.Name) > colWidth {
-				colWidth = len(p.Name)
+			if len(p.Name) > nameCol {
+				nameCol = len(p.Name)
 			}
 		}
-		colWidth += 4
+		nameCol += 2
+		targetsCol := 8
 
-		s += fmt.Sprintf("  %-*s %s\n", colWidth, "PROJECT", "TARGETS")
-		s += "  " + strings.Repeat("─", colWidth+10) + "\n"
+		// column headers
+		tHdr := "TARGETS"
+		tPad := targetsCol - len(tHdr)
+		tLpad := tPad / 2
+		tRpad := tPad - tLpad
+		centeredTargets := strings.Repeat(" ", tLpad) + tHdr + strings.Repeat(" ", tRpad)
+		hdr := fmt.Sprintf("      %-*s  %s  %s", nameCol, "PROJECT", centeredTargets, "DESCRIPTION")
+		s += borderedRow(hdr, iw, colHeaderStyle) + "\n"
+		s += borderStyle.Render("├" + strings.Repeat("─", iw) + "┤") + "\n"
 
-		// scrollable viewport: 5 lines reserved for header + hint bar
-		maxVisible := m.height - 5
+		// scrollable viewport: 8 lines reserved for header + col header + borders + hint bar
+		maxVisible := m.height - 8
 		if maxVisible < 1 {
 			maxVisible = 1
 		}
 
 		offset := 0
-		if m.projectCursor >= maxVisible {
+		if m.projectCursor >= offset+maxVisible {
 			offset = m.projectCursor - maxVisible + 1
 		}
 		end := offset + maxVisible
@@ -285,59 +352,87 @@ func (m model) renderProjectList() string {
 
 		for i := offset; i < end; i++ {
 			p := m.projects[i]
-			cursor := "  "
+			cur := "   "
 			if i == m.projectCursor {
-				cursor = "> "
+				cur = " ▸ "
 			}
-			line := fmt.Sprintf("%s%-*s %d", cursor, colWidth, p.Name, len(p.Targets))
+
+			name := fmt.Sprintf("%-*s", nameCol, p.Name)
+			countStr := fmt.Sprintf("%d", len(p.Targets))
+			pad := targetsCol - len(countStr)
+			lpad := pad / 2
+			rpad := pad - lpad
+			count := strings.Repeat(" ", lpad) + countStr + strings.Repeat(" ", rpad)
+			desc := p.Description
+			if desc == "" {
+				desc = "—"
+			}
+			line := fmt.Sprintf("%s  %s  %s  %s", cur, name, count, desc)
+
+			var style lipgloss.Style
 			if i == m.projectCursor {
-				s += selectedStyle.Render(line) + "\n"
+				style = selectedRowStyle
+			} else if i%2 == 0 {
+				style = altRowStyle
 			} else {
-				s += line + "\n"
+				style = normalRowStyle
 			}
+			s += borderedRow(line, iw, style) + "\n"
 		}
 	}
 
-	// pad to fill screen
+	// pad to fill screen with bordered empty rows
 	lines := strings.Count(s, "\n")
-	for i := lines; i < m.height-2; i++ {
-		s += "\n"
+	for i := lines; i < m.height-3; i++ {
+		s += borderedRow("", iw, normalRowStyle) + "\n"
 	}
 
-	hint := "  Enter drill in   g pull   ? readme   q quit"
-	if m.flash != "" {
-		hint += "   " + m.flash
-	}
-	s += hintBarStyle.Render(hint)
+	s += borderStyle.Render("└" + strings.Repeat("─", iw) + "┘") + "\n"
+	s += m.renderHintBar([][]string{
+		{"Enter", "Drill In"},
+		{"g", "Pull"},
+		{"?", "Readme"},
+		{"q", "Quit"},
+	})
 	return s
 }
 
 func (m model) renderTargetList() string {
 	proj := m.projects[m.selectedProject]
+	w := m.width
+	if w < 20 {
+		w = 80
+	}
 
-	s := headerStyle.Render("mkx › "+proj.Name) + "\n\n"
+	iw := w - 2
+
+	// header
+	s := m.renderHeader(proj.Name, m.targetCursor+1, len(proj.Targets)) + "\n"
+	s += borderStyle.Render("┌" + strings.Repeat("─", iw) + "┐") + "\n"
 
 	if len(proj.Targets) == 0 {
-		s += "  No targets found.\n"
+		s += borderedRow("  No targets found.", iw, normalRowStyle) + "\n"
 	} else {
-		colWidth := len("TARGET")
+		nameCol := len("TARGET")
 		for _, t := range proj.Targets {
-			if len(t.Name) > colWidth {
-				colWidth = len(t.Name)
+			if len(t.Name) > nameCol {
+				nameCol = len(t.Name)
 			}
 		}
-		colWidth += 4
+		nameCol += 2
 
-		s += fmt.Sprintf("  %-*s %s\n", colWidth, "TARGET", "DESCRIPTION")
-		s += "  " + strings.Repeat("─", colWidth+30) + "\n"
+		// column headers
+		hdr := fmt.Sprintf("      %-*s  %s", nameCol, "TARGET", "DESCRIPTION")
+		s += borderedRow(hdr, iw, colHeaderStyle) + "\n"
+		s += borderStyle.Render("├" + strings.Repeat("─", iw) + "┤") + "\n"
 
-		maxVisible := m.height - 5
+		maxVisible := m.height - 8
 		if maxVisible < 1 {
 			maxVisible = 1
 		}
 
 		offset := 0
-		if m.targetCursor >= maxVisible {
+		if m.targetCursor >= offset+maxVisible {
 			offset = m.targetCursor - maxVisible + 1
 		}
 		end := offset + maxVisible
@@ -347,37 +442,51 @@ func (m model) renderTargetList() string {
 
 		for i := offset; i < end; i++ {
 			t := proj.Targets[i]
-			cursor := "  "
+			cur := "   "
 			if i == m.targetCursor {
-				cursor = "> "
+				cur = " ▸ "
 			}
+
 			desc := t.Description
 			if desc == "" {
-				desc = "-"
+				desc = "—"
 			}
-			line := fmt.Sprintf("%s%-*s %s", cursor, colWidth, t.Name, desc)
+			name := fmt.Sprintf("%-*s", nameCol, t.Name)
+			line := fmt.Sprintf("%s  %s  %s", cur, name, desc)
+
+			var style lipgloss.Style
 			if i == m.targetCursor {
-				s += selectedStyle.Render(line) + "\n"
+				style = selectedRowStyle
+			} else if i%2 == 0 {
+				style = altRowStyle
 			} else {
-				s += line + "\n"
+				style = normalRowStyle
 			}
+			s += borderedRow(line, iw, style) + "\n"
 		}
 	}
 
-	// pad to fill screen
+	// pad to fill screen with bordered empty rows
 	lines := strings.Count(s, "\n")
-	for i := lines; i < m.height-2; i++ {
-		s += "\n"
+	for i := lines; i < m.height-3; i++ {
+		s += borderedRow("", iw, normalRowStyle) + "\n"
 	}
 
-	hint := "  r run   g pull   ? readme   Esc back"
+	s += borderStyle.Render("└" + strings.Repeat("─", iw) + "┘") + "\n"
+
+	hints := [][]string{
+		{"r", "Run"},
+		{"g", "Pull"},
+		{"?", "Readme"},
+		{"Esc", "Back"},
+	}
 	if m.lastRun != nil {
 		status := "✓"
 		if m.lastRun.ExitCode != 0 {
 			status = fmt.Sprintf("✗ exit %d", m.lastRun.ExitCode)
 		}
-		hint += fmt.Sprintf("   %s %s", status, m.lastRun.Duration.Round(time.Second))
+		m.flash = fmt.Sprintf("%s %s", status, m.lastRun.Duration.Round(time.Second))
 	}
-	s += hintBarStyle.Render(hint)
+	s += m.renderHintBar(hints)
 	return s
 }

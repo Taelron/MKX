@@ -4,6 +4,10 @@ Make target runner TUI with k9s-style navigation.
 
 Discover projects in a workspace, browse their Make targets, and run them with full terminal handover.
 
+![mkx project list](docs/screenshot-projects.png)
+
+![mkx target list](docs/screenshot-targets.png)
+
 ## Features
 
 - Recursive Makefile discovery with configurable depth and exclusions
