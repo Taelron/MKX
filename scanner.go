@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -78,6 +79,11 @@ func scanWorkspace(root string, excludes map[string]bool, maxDepth int) ([]proje
 		}
 
 		return nil
+	})
+
+	// order projects alphabetically by name, case-insensitive
+	sort.Slice(projects, func(i, j int) bool {
+		return strings.ToLower(projects[i].Name) < strings.ToLower(projects[j].Name)
 	})
 
 	return projects, err
