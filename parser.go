@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -19,9 +20,17 @@ type target struct {
 func parseTargets(projectPath string) ([]target, error) {
 	targets, err := parseWithMake(projectPath)
 	if err != nil || len(targets) == 0 {
-		return parseWithRegex(projectPath)
+		targets, err = parseWithRegex(projectPath)
 	}
-	return targets, nil
+	sortTargets(targets)
+	return targets, err
+}
+
+// sortTargets orders targets alphabetically by name, case-insensitive.
+func sortTargets(targets []target) {
+	sort.Slice(targets, func(i, j int) bool {
+		return strings.ToLower(targets[i].Name) < strings.ToLower(targets[j].Name)
+	})
 }
 
 func parseWithMake(projectPath string) ([]target, error) {
