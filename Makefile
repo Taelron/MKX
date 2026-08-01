@@ -10,7 +10,9 @@ test: ## Run the full test suite
 	go test ./...
 
 verify: ## Check discovery behaviour against the committed golden
-	go test -v -run TestCharacterization ./internal/app/
+	# -count=1 is load-bearing: without it a cached result replays an earlier
+	# pass, and the oracle reports green without having compared anything.
+	go test -v -count=1 -run TestCharacterization ./internal/app/
 
 verify-parser: ## Run the pure parser table tests
 	go test -v -count=1 ./internal/adapter/makex/
