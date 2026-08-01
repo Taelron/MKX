@@ -1,7 +1,7 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-guards rebaseline-golden tidy-check run
+.PHONY: build test verify verify-parser verify-tui verify-guards rebaseline-golden tidy-check run
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
@@ -14,6 +14,9 @@ verify: ## Check discovery behaviour against the committed golden
 
 verify-parser: ## Run the pure parser table tests
 	go test -v -count=1 ./internal/adapter/makex/
+
+verify-tui: ## Run the TUI keymap, modal and overlay tests by name
+	go test -v -count=1 ./internal/ui/tui/
 
 verify-guards: ## Prove the golden guards fail — sabotages a throwaway copy, never this tree
 	./scripts/verify-oracle-guards.sh
