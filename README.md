@@ -20,7 +20,8 @@ Discover projects in a workspace, browse their Make targets, and run them with f
 - Target descriptions from `## comment` convention
 - Full terminal handover — interactive prompts work natively
 - Git pull and refresh targets with `g` key
-- README viewer with rendered markdown via `?` key
+- README viewer with rendered markdown via `R` key
+- Context-sensitive help overlay via `?` key
 - Status bar with exit code and duration
 
 ## Install
@@ -50,11 +51,18 @@ mkx
 |-----|-------------|-------------|
 | j/k, arrows | Navigate | Navigate |
 | Enter | Drill into project | Run target |
-| r | - | Run target |
 | g | Git pull & refresh | Git pull & refresh |
-| ? | View README | View README |
+| R | View README | View README |
+| ? | Help overlay | Help overlay |
 | Esc | - | Back |
 | q | Quit | Quit |
+
+`?` opens a help overlay listing the keys available in the current view. The
+README viewer moved to `R` to free it.
+
+`r` is not bound. Across Taelron TUIs `r` means *refresh*, and mkx's target
+lists are parsed once at startup, so there is nothing to refresh. It used to
+run the selected target — press `Enter` instead.
 
 ## Development
 

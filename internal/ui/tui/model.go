@@ -53,6 +53,9 @@ type Model struct {
 	// flash message
 	flash string
 
+	// modal overlay; the zero value is inactive
+	modal modalState
+
 	// terminal size
 	width  int
 	height int
@@ -118,76 +121,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleKey is the only path from a tea.KeyMsg into the model, which is what
+// makes the modal interception below total: no key can reach a view's bindings
+// while a modal is up, because the view keymap is only consulted past the early
+// return.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	if m.modal.active {
+		if h := m.modal.keys.dispatch(key); h != nil {
+			return h(m, key)
+		}
+		// An unbound key inside a modal is a no-op, never a fall-through.
+		return m, nil
+	}
+
+	// Below the interception, so keys pressed inside a modal do not clear a
+	// flash that is hidden behind it anyway.
 	m.flash = ""
+
+	if h := m.viewKeymap().dispatch(key); h != nil {
+		return h(m, key)
+	}
+	return m, nil
+}
+
+// viewKeymap returns the current view's bindings — the single source for its
+// key dispatch, its hint bar and its help overlay.
+func (m Model) viewKeymap() keymap {
 	switch m.view {
 	case viewProjects:
-		return m.handleProjectKeys(msg)
+		return projectKeymap()
 	case viewTargets:
-		return m.handleTargetKeys(msg)
+		return targetKeymap()
 	}
-	return m, nil
+	return nil
 }
 
-func (m Model) handleProjectKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
-	case "up", "k":
-		if m.projectCursor > 0 {
-			m.projectCursor--
-		}
-	case "down", "j":
-		if m.projectCursor < len(m.projects)-1 {
-			m.projectCursor++
-		}
-	case "enter":
-		if len(m.projects) > 0 {
-			m.selectedProject = m.projectCursor
-			m.targetCursor = 0
-			m.view = viewTargets
-		}
-	case "?":
-		if len(m.projects) > 0 {
-			m.flash = ""
-			return m, viewReadme(m.app.ReadmePath(m.rootCtx, m.projects[m.projectCursor]))
-		}
-	case "g":
-		if len(m.projects) > 0 {
-			return m, m.pull(m.projectCursor)
-		}
+// currentProject returns the project the target view is showing. The false
+// return covers a Model whose selectedProject is out of range, which the
+// bindings guard rather than panicking on.
+func (m Model) currentProject() (domain.Project, bool) {
+	if m.selectedProject < 0 || m.selectedProject >= len(m.projects) {
+		return domain.Project{}, false
 	}
-	return m, nil
-}
-
-func (m Model) handleTargetKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	proj := m.projects[m.selectedProject]
-
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
-	case "esc":
-		m.view = viewProjects
-		m.lastRun = nil
-	case "up", "k":
-		if m.targetCursor > 0 {
-			m.targetCursor--
-		}
-	case "down", "j":
-		if m.targetCursor < len(proj.Targets)-1 {
-			m.targetCursor++
-		}
-	case "r", "enter":
-		if len(proj.Targets) > 0 {
-			return m, m.runTarget(proj, proj.Targets[m.targetCursor])
-		}
-	case "?":
-		m.flash = ""
-		return m, viewReadme(m.app.ReadmePath(m.rootCtx, proj))
-	case "g":
-		return m, m.pull(m.selectedProject)
-	}
-	return m, nil
+	return m.projects[m.selectedProject], true
 }
 
 // runTarget asks the app for the command that runs t, then hands the terminal
@@ -227,21 +205,25 @@ func (m Model) pull(projectIndex int) tea.Cmd {
 }
 
 func (m Model) View() string {
+	var base string
 	switch m.view {
 	case viewProjects:
-		return m.renderProjectList()
+		base = m.renderProjectList()
 	case viewTargets:
-		return m.renderTargetList()
+		base = m.renderTargetList()
 	}
-	return ""
+
+	if m.modal.active {
+		return m.renderModal(base)
+	}
+	return base
 }
 
-func (m Model) renderHintBar(hints [][]string) string {
-	var parts []string
-	for _, h := range hints {
-		parts = append(parts, styles.HintKey.Render("<"+h[0]+">")+" "+styles.HintAction.Render(h[1]))
-	}
-	bar := strings.Join(parts, "  ")
+// renderHintBar renders a view's keymap as the bottom bar, with any flash
+// message appended. The key/Action formatting lives on keymap.hintBar; this
+// function only owns the flash and the bar's width.
+func (m Model) renderHintBar(k keymap) string {
+	bar := k.hintBar()
 	if m.flash != "" {
 		bar += "  " + styles.Flash.Render(m.flash)
 	}
@@ -372,12 +354,7 @@ func (m Model) renderProjectList() string {
 	}
 
 	s += styles.Border.Render("└"+strings.Repeat("─", iw)+"┘") + "\n"
-	s += m.renderHintBar([][]string{
-		{"Enter", "Drill In"},
-		{"g", "Pull"},
-		{"?", "Readme"},
-		{"q", "Quit"},
-	})
+	s += m.renderHintBar(projectKeymap())
 	return s
 }
 
@@ -458,12 +435,6 @@ func (m Model) renderTargetList() string {
 
 	s += styles.Border.Render("└"+strings.Repeat("─", iw)+"┘") + "\n"
 
-	hints := [][]string{
-		{"r", "Run"},
-		{"g", "Pull"},
-		{"?", "Readme"},
-		{"Esc", "Back"},
-	}
 	if m.lastRun != nil {
 		status := "✓"
 		if m.lastRun.ExitCode != 0 {
@@ -471,6 +442,6 @@ func (m Model) renderTargetList() string {
 		}
 		m.flash = fmt.Sprintf("%s %s", status, m.lastRun.Duration.Round(time.Second))
 	}
-	s += m.renderHintBar(hints)
+	s += m.renderHintBar(targetKeymap())
 	return s
 }

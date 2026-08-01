@@ -83,4 +83,37 @@ var (
 	FlashError = lipgloss.NewStyle().
 			Foreground(colorRed).
 			Bold(true)
+
+	// ModalBorder is the rounded frame around a modal overlay. Blue, per the
+	// UI Patterns colour conventions, so it separates from the dimmed view
+	// behind it.
+	ModalBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBlue).
+			Padding(0, 1)
+
+	// ModalTitle is the modal header's left-hand title.
+	ModalTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorBlue)
+
+	// ModalContext is the modal header's right-aligned context — the view
+	// name, a "Step 1/3" counter, and so on.
+	ModalContext = lipgloss.NewStyle().
+			Foreground(colorDimmed)
+
+	// ModalBody is the modal's content area.
+	ModalBody = lipgloss.NewStyle().
+			Foreground(colorWhite)
+
+	// ModalRule is the horizontal rule separating a modal's header, body and
+	// hint bar.
+	ModalRule = lipgloss.NewStyle().
+			Foreground(colorBorder)
+
+	// Dimmed renders the underlying view while a modal is open: a single
+	// muted foreground, with the row backgrounds dropped so the modal keeps
+	// the eye.
+	Dimmed = lipgloss.NewStyle().
+		Foreground(colorDimmed)
 )
