@@ -64,7 +64,20 @@ func splice(bg, fg string, x, y int) string {
 			left += ansiReset
 		}
 
-		right := ansi.TruncateLeftWc(bgLine, x+lipgloss.Width(fgLine), "")
+		cut := x + lipgloss.Width(fgLine)
+		right := ansi.TruncateLeftWc(bgLine, cut, "")
+
+		// The two truncators disagree about a grapheme that straddles the cut
+		// column: TruncateWc drops it, TruncateLeftWc keeps it whole. Left
+		// alone, a double-width background rune under the modal's right edge
+		// makes this one row a column wider than every other, so the border
+		// below it steps sideways. Drop the straddler and pad, matching the
+		// left edge.
+		if want := lipgloss.Width(bgLine) - cut; want > 0 {
+			if over := lipgloss.Width(right) - want; over > 0 {
+				right = strings.Repeat(" ", over) + ansi.TruncateLeftWc(bgLine, cut+over, "")
+			}
+		}
 
 		bgLines[row] = left + fgLine + right
 	}

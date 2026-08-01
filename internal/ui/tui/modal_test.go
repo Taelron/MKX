@@ -66,6 +66,40 @@ func TestBuildModalBoxCapsTheInnerWidth(t *testing.T) {
 	}
 }
 
+// Lipgloss word-wraps rather than truncates when a line exceeds the style's
+// width, so an over-wide header or hint bar silently makes the box a row
+// taller and breaks the single-line header the box structure specifies. A
+// deeply nested project path reaches this at 80 columns, where inner is 44.
+func TestBuildModalBoxClampsTheHeaderAndHintBar(t *testing.T) {
+	const maxInner = 44
+
+	tests := []struct {
+		name                  string
+		title, context, hints string
+	}{
+		{"long context", "Help", "deep/level2/level3/level4/level5/level6/level7", "Esc/Close"},
+		{"long title", strings.Repeat("T", 90), "", "Esc/Close"},
+		{"long hint bar", "Help", "x", "Enter/Confirm  Esc/Cancel  Space/Toggle  Tab/Next  ?/Help  q/Quit"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			box := buildModalBox(tt.title, tt.context, "body", tt.hints, maxInner)
+			lines := strings.Split(box, "\n")
+
+			// border, header, rule, body, rule, hints, border
+			if len(lines) != 7 {
+				t.Errorf("box has %d lines, want 7 — a line wrapped:\n%s", len(lines), ansi.Strip(box))
+			}
+			for i, line := range lines {
+				if w := lipgloss.Width(line); w != maxInner+4 {
+					t.Errorf("line %d width = %d, want %d: %q", i, w, maxInner+4, ansi.Strip(line))
+				}
+			}
+		})
+	}
+}
+
 func TestBuildModalBoxHasAMinimumWidth(t *testing.T) {
 	box := buildModalBox("H", "", "x", "y", 44)
 

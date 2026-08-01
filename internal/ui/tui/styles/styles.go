@@ -106,10 +106,6 @@ var (
 	ModalBody = lipgloss.NewStyle().
 			Foreground(colorWhite)
 
-	// ModalHintBar is the key hints along the bottom of a modal.
-	ModalHintBar = lipgloss.NewStyle().
-			Foreground(colorDimmed)
-
 	// ModalRule is the horizontal rule separating a modal's header, body and
 	// hint bar.
 	ModalRule = lipgloss.NewStyle().

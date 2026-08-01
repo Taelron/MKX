@@ -77,15 +77,39 @@ func TestSplice(t *testing.T) {
 
 // A CJK background is the case CutWc gets wrong; assert the visible width
 // survives the splice unchanged.
+//
+// Every offset, not just one: at an odd x both edges of the modal land inside a
+// double-width rune, and the two truncators disagree about what to do with a
+// straddler. An even-offset-only test passes while the row silently grows by a
+// column.
 func TestSpliceWideRuneBackground(t *testing.T) {
 	bg := strings.Repeat("日", 10) // 20 display columns
-	got := splice(bg, "AB", 4, 0)
 
-	if w := lipgloss.Width(got); w != 20 {
-		t.Errorf("spliced width = %d, want 20", w)
+	for x := 0; x <= 8; x++ {
+		got := splice(bg, "AB", x, 0)
+
+		if w := lipgloss.Width(got); w != 20 {
+			t.Errorf("x=%d: spliced width = %d, want 20 (%q)", x, w, ansi.Strip(got))
+		}
+		if !strings.Contains(got, "AB") {
+			t.Errorf("x=%d: spliced line lost the foreground: %q", x, got)
+		}
 	}
-	if !strings.Contains(got, "AB") {
-		t.Errorf("spliced line lost the foreground: %q", got)
+}
+
+// The whole point of the width discipline: a modal spliced over a wide-rune
+// background must stay rectangular, or its border steps sideways row by row.
+func TestSpliceKeepsAWideRuneBackgroundRectangular(t *testing.T) {
+	row := strings.Repeat("日", 10)
+	bg := strings.Join([]string{row, row, row, row}, "\n")
+	fg := "┌──┐\n│ab│\n└──┘"
+
+	out := splice(bg, fg, 3, 0)
+
+	for i, line := range strings.Split(out, "\n") {
+		if w := lipgloss.Width(line); w != 20 {
+			t.Errorf("row %d width = %d, want 20: %q", i, w, ansi.Strip(line))
+		}
 	}
 }
 

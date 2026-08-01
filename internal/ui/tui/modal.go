@@ -76,6 +76,17 @@ func (m Model) modalMaxInnerWidth() int {
 
 const modalMinInnerWidth = 20
 
+// clampWidth truncates s to w display columns, marking the cut with an
+// ellipsis. Every line inside a modal goes through it: lipgloss word-wraps
+// rather than truncates when a line exceeds the style's width, which would
+// silently change the box's height.
+func clampWidth(s string, w int) string {
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	return ansi.TruncateWc(s, w, "…")
+}
+
 // buildModalBox renders the frame around a body:
 //
 //	╭─────────────────────────────────╮
@@ -105,6 +116,21 @@ func buildModalBox(title, context, body, hints string, maxInner int) string {
 	inner = max(inner, lipgloss.Width(hints))
 	inner = min(max(inner, modalMinInnerWidth), maxInner)
 
+	// Header and hint bar are clamped to inner just as body lines are. Without
+	// this, lipgloss word-wraps the over-wide line inside the border — a long
+	// project name in the header would split across two rows and push
+	// everything below it down. A deeply nested project path reaches this at
+	// 80 columns, where inner is only 44.
+	title = clampWidth(title, inner)
+	if context != "" {
+		if room := inner - lipgloss.Width(title) - 2; room < 1 {
+			context = ""
+		} else {
+			context = clampWidth(context, room)
+		}
+	}
+	hints = clampWidth(hints, inner)
+
 	// Header: title left, context hard right.
 	styledHeader := styles.ModalTitle.Render(title)
 	if context != "" {
@@ -115,10 +141,7 @@ func buildModalBox(title, context, body, hints string, maxInner int) string {
 	rule := styles.ModalRule.Render(strings.Repeat("─", inner))
 
 	for i, line := range bodyLines {
-		if lipgloss.Width(line) > inner {
-			line = ansi.TruncateWc(line, inner, "…")
-		}
-		bodyLines[i] = styles.ModalBody.Render(line)
+		bodyLines[i] = styles.ModalBody.Render(clampWidth(line, inner))
 	}
 
 	parts := make([]string, 0, len(bodyLines)+4)
