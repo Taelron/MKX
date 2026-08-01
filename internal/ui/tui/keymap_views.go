@@ -36,6 +36,8 @@ func projectKeymap() keymap {
 				if len(m.projects) > 0 {
 					m.selectedProject = m.projectCursor
 					m.targetCursor = 0
+					// A filter never survives leaving the view it filtered.
+					m.filter = filterState{}
 					m.view = viewTargets
 				}
 				return m, nil
@@ -83,19 +85,41 @@ func targetKeymap() keymap {
 			help: "Move the cursor down", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				proj, ok := m.currentProject()
-				if ok && m.targetCursor < len(proj.Targets)-1 {
+				// Bound against the filtered length, not the full list:
+				// otherwise the cursor walks past the last visible row.
+				if ok && m.targetCursor < len(m.filteredTargets(proj))-1 {
 					m.targetCursor++
 				}
 				return m, nil
 			}},
+		{keys: []string{"/"}, display: "/", label: "Search",
+			// Kept short: the help overlay's inner width is ~44 columns at
+			// 80×24, and a row that truncates fails the suite.
+			help: "Filter by name or description", inBar: true,
+			handler: func(m Model, _ string) (Model, tea.Cmd) {
+				return m.activateFilter(), nil
+			}},
 		{keys: []string{"enter"}, display: "Enter", label: "Run",
 			help: "Run the selected target", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
-				proj, ok := m.currentProject()
-				if !ok || len(proj.Targets) == 0 {
+				// While filtering, Enter is the mode exit: it keeps the matched
+				// results visible and runs nothing. A second Enter runs.
+				if m.filter.active {
+					m.filter.active = false
 					return m, nil
 				}
-				return m, m.runTarget(proj, proj.Targets[m.targetCursor])
+				proj, ok := m.currentProject()
+				if !ok {
+					return m, nil
+				}
+				// Resolved through the filtered slice — running
+				// proj.Targets[cursor] would run the wrong target whenever a
+				// filter is in effect.
+				targets := m.filteredTargets(proj)
+				if m.targetCursor < 0 || m.targetCursor >= len(targets) {
+					return m, nil
+				}
+				return m, m.runTarget(proj, targets[m.targetCursor])
 			}},
 		{keys: []string{"g"}, display: "g", label: "Pull",
 			help: "Git pull and re-read targets", inBar: true,
@@ -117,6 +141,14 @@ func targetKeymap() keymap {
 		{keys: []string{"esc"}, display: "Esc", label: "Back",
 			help: "Back to the project list", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
+				// Esc clears whenever there is anything to clear — filter mode
+				// active, or mode closed by Enter with the text still in
+				// effect. Only with no filter at all does it leave the view.
+				// That keeps "Esc clears the filter, then exits" true in every
+				// state, and leaves no filter that Esc cannot reach.
+				if m.filter.active || m.filter.text != "" {
+					return m.clearFilter(), nil
+				}
 				m.view = viewProjects
 				m.lastRun = nil
 				return m, nil

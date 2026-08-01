@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -99,7 +100,7 @@ func TestHintBarsMatchTheBaselineFormats(t *testing.T) {
 		{
 			name: "targets",
 			k:    targetKeymap(),
-			want: "↑↓/Navigate  Enter/Run  g/Pull  R/Readme  Esc/Back  ?/Help",
+			want: "↑↓/Navigate  //Search  Enter/Run  g/Pull  R/Readme  Esc/Back  ?/Help",
 		},
 	}
 
@@ -225,6 +226,113 @@ func TestEscAndQuestionMarkCloseTheModal(t *testing.T) {
 		if closed.targetCursor != before.targetCursor || closed.view != before.view {
 			t.Errorf("%q disturbed the underlying view", key)
 		}
+	}
+}
+
+// ------------------------------------------------------------ filter render
+
+func TestFilterBarRendersOnTheTextNotTheMode(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter filterState
+		want   bool
+	}{
+		{name: "mode active, text set", filter: filterState{active: true, text: "bui"}, want: true},
+		// The state Enter produces: the list is still filtered, so the bar is
+		// what explains why rows are missing.
+		{name: "mode closed, text set", filter: filterState{active: false, text: "bui"}, want: true},
+		{name: "mode active, text empty", filter: filterState{active: true, text: ""}, want: false},
+		{name: "no filter", filter: filterState{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := filterModel()
+			m.filter = tt.filter
+			rendered := ansi.Strip(m.renderTargetList())
+
+			if got := strings.Contains(rendered, "Filter:"); got != tt.want {
+				t.Errorf("filter bar rendered = %v, want %v", got, tt.want)
+			}
+			if tt.want && !strings.Contains(rendered, "Filter: "+tt.filter.text) {
+				t.Errorf("the bar does not carry the filter text %q", tt.filter.text)
+			}
+		})
+	}
+}
+
+func TestNoMatchShowsItsOwnEmptyState(t *testing.T) {
+	m := filterModel()
+	m.filter = filterState{active: true, text: "zzz"}
+	got := ansi.Strip(m.renderTargetList())
+
+	if !strings.Contains(got, "No targets match. Press Esc to clear the filter.") {
+		t.Error("a filter matching nothing did not show the empty state")
+	}
+	if strings.Contains(got, "No targets found.") {
+		t.Error("a filter matching nothing showed the no-targets-at-all state")
+	}
+
+	// The other empty state is still the one a project with no targets gets.
+	empty := filterModel()
+	empty.projects[0].Targets = nil
+	if !strings.Contains(ansi.Strip(empty.renderTargetList()), "No targets found.") {
+		t.Error("a project with no targets lost its empty state")
+	}
+}
+
+// The maxVisible correction, as a tested claim rather than an asserted one: the
+// filter bar and its separator cost two rows, so the frame keeps its height.
+func TestFilterBarDoesNotChangeTheRenderedHeight(t *testing.T) {
+	// Enough targets to overflow the viewport at every height under test, so
+	// the row loop — not the padding — is what has to give up the two lines.
+	many := make([]domain.Target, 40)
+	for i := range many {
+		many[i] = domain.Target{Name: fmt.Sprintf("target-%02d", i), Description: "filterable"}
+	}
+
+	// 10 is the lowest height at which the row budget can absorb the bar; see
+	// TestFilterBarBelowTheChromeFloor for what happens under it.
+	for _, height := range []int{10, 11, 12, 24, 40} {
+		unfiltered := filterModel()
+		unfiltered.projects[0].Targets = many
+		unfiltered.height = height
+
+		bar := unfiltered
+		bar.filter = filterState{active: true, text: "filterable"} // matches all 40
+
+		want := strings.Count(unfiltered.renderTargetList(), "\n")
+		got := strings.Count(bar.renderTargetList(), "\n")
+		if got != want {
+			t.Errorf("height %d: %d lines with the filter bar, %d without", height, got, want)
+		}
+	}
+}
+
+// The boundary the -2 correction cannot cross, pinned rather than left to be
+// rediscovered: below height 10 the row budget has already hit its floor of one
+// row, so the bar's two lines are pure addition and the frame grows.
+//
+// The chrome is irreducible — header, top border, bar, separator, column
+// header, separator, bottom border, hint bar is eight lines before any content
+// — so the only way to hold the height would be to drop the bar, which the
+// acceptance criteria explicitly require to render whenever the filter text is
+// set. The unfiltered view has the same floor one notch lower. Recorded here so
+// a future change to either number is a deliberate act.
+func TestFilterBarBelowTheChromeFloor(t *testing.T) {
+	m := filterModel()
+	m.height = 8
+	m.filter = filterState{active: true, text: "e"} // matches every target
+
+	unfiltered := m
+	unfiltered.filter = filterState{}
+
+	got := strings.Count(m.renderTargetList(), "\n")
+	want := strings.Count(unfiltered.renderTargetList(), "\n")
+
+	if got-want != 2 {
+		t.Errorf("height 8: %d lines with the bar, %d without (delta %d); the documented floor delta is 2",
+			got, want, got-want)
 	}
 }
 
