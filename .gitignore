@@ -1,3 +1,5 @@
-mkx
+# the built binary at the repo root only — a bare "mkx" would also match the
+# cmd/mkx package directory
+/mkx
 *.exe
 dist/

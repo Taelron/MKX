@@ -1,24 +1,39 @@
-package main
+// Package makex is the Make adapter: it discovers a project's targets and
+// builds the command that runs one.
+//
+// Discovery is the two-strategy model ratified in ADR-M002 — `make -pRrq`
+// first, a regex scan of the Makefile as the fallback when make errors or
+// yields nothing.
+package makex
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Gaetan-Jaminon/mkx/internal/app"
+	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 )
 
-type target struct {
-	Name        string
-	Description string
+// Runner discovers and runs Make targets. Construct it with NewRunner.
+type Runner struct{}
+
+var _ app.MakeRunner = (*Runner)(nil)
+
+// NewRunner returns a Runner.
+func NewRunner() *Runner {
+	return &Runner{}
 }
 
-// parseTargets extracts Make targets from a project directory.
+// Discover extracts Make targets from a project directory.
 // Tries `make -pRrq` first, falls back to regex parsing.
-func parseTargets(projectPath string) ([]target, error) {
-	targets, err := parseWithMake(projectPath)
+func (r *Runner) Discover(ctx context.Context, projectPath string) ([]domain.Target, error) {
+	targets, err := parseWithMake(ctx, projectPath)
 	if err != nil || len(targets) == 0 {
 		targets, err = parseWithRegex(projectPath)
 	}
@@ -26,19 +41,24 @@ func parseTargets(projectPath string) ([]target, error) {
 	return targets, err
 }
 
+// TargetCommand returns the command that runs the named target in dir.
+func (r *Runner) TargetCommand(_ context.Context, dir, name string) domain.Command {
+	return domain.Command{Argv: []string{"make", name}, WorkDir: dir}
+}
+
 // sortTargets orders targets alphabetically by name, case-insensitive.
-func sortTargets(targets []target) {
+func sortTargets(targets []domain.Target) {
 	sort.Slice(targets, func(i, j int) bool {
 		return strings.ToLower(targets[i].Name) < strings.ToLower(targets[j].Name)
 	})
 }
 
-func parseWithMake(projectPath string) ([]target, error) {
-	cmd := exec.Command("make", "-pRrq", "-C", projectPath)
+func parseWithMake(ctx context.Context, projectPath string) ([]domain.Target, error) {
+	cmd := exec.CommandContext(ctx, "make", "-pRrq", "-C", projectPath)
 	cmd.Stdin = nil
 	out, _ := cmd.Output() // make -q exits non-zero, that's OK
 
-	var targets []target
+	var targets []domain.Target
 	seen := make(map[string]bool)
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
 	inFiles := false
@@ -87,7 +107,7 @@ func parseWithMake(projectPath string) ([]target, error) {
 		}
 		seen[name] = true
 
-		targets = append(targets, target{Name: name})
+		targets = append(targets, domain.Target{Name: name})
 	}
 
 	// enrich with descriptions from the Makefile comments
@@ -98,7 +118,7 @@ func parseWithMake(projectPath string) ([]target, error) {
 
 var makeTargetRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.-]*):\s*(?:.*?##\s*(.*))?$`)
 
-func parseWithRegex(projectPath string) ([]target, error) {
+func parseWithRegex(projectPath string) ([]domain.Target, error) {
 	for _, name := range []string{"Makefile", "makefile"} {
 		f, err := os.Open(filepath.Join(projectPath, name))
 		if err != nil {
@@ -106,7 +126,7 @@ func parseWithRegex(projectPath string) ([]target, error) {
 		}
 		defer f.Close()
 
-		var targets []target
+		var targets []domain.Target
 		seen := make(map[string]bool)
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
@@ -119,7 +139,7 @@ func parseWithRegex(projectPath string) ([]target, error) {
 				continue
 			}
 			seen[tName] = true
-			targets = append(targets, target{
+			targets = append(targets, domain.Target{
 				Name:        tName,
 				Description: strings.TrimSpace(matches[2]),
 			})
@@ -131,7 +151,7 @@ func parseWithRegex(projectPath string) ([]target, error) {
 
 var descRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.-]*):\s*.*?##\s*(.*)$`)
 
-func enrichDescriptions(projectPath string, targets []target) {
+func enrichDescriptions(projectPath string, targets []domain.Target) {
 	for _, name := range []string{"Makefile", "makefile"} {
 		f, err := os.Open(filepath.Join(projectPath, name))
 		if err != nil {

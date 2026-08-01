@@ -3,7 +3,7 @@ version: 2
 project_name: mkx
 
 builds:
-  - main: .
+  - main: ./cmd/mkx
     binary: mkx
     env:
       - CGO_ENABLED=0
