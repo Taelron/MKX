@@ -12,17 +12,18 @@ const testdataDir = "../../../testdata"
 
 // TestDiscover checks the make -pRrq parse over the repository's own sample
 // Makefile: every target is found, in case-insensitive name order, each
-// carrying the description from its `## comment`.
+// carrying the description from its `## comment` and the phony status from the
+// Makefile's `.PHONY:` line — which names all eight.
 func TestDiscover(t *testing.T) {
 	want := []domain.Target{
-		{Name: "confirm", Description: "Ask for confirmation before proceeding"},
-		{Name: "fail", Description: "Always exits with error"},
-		{Name: "greet", Description: "Greet someone (usage: make greet NAME=Alice)"},
-		{Name: "hello", Description: "Print a greeting"},
-		{Name: "long-running", Description: "Simulate a long task (5s)"},
-		{Name: "multiline", Description: "Print lots of output"},
-		{Name: "no-desc", Description: ""},
-		{Name: "prompt", Description: "Ask for user input"},
+		{Name: "confirm", Description: "Ask for confirmation before proceeding", Phony: domain.PhonyYes},
+		{Name: "fail", Description: "Always exits with error", Phony: domain.PhonyYes},
+		{Name: "greet", Description: "Greet someone (usage: make greet NAME=Alice)", Phony: domain.PhonyYes},
+		{Name: "hello", Description: "Print a greeting", Phony: domain.PhonyYes},
+		{Name: "long-running", Description: "Simulate a long task (5s)", Phony: domain.PhonyYes},
+		{Name: "multiline", Description: "Print lots of output", Phony: domain.PhonyYes},
+		{Name: "no-desc", Description: "", Phony: domain.PhonyYes},
+		{Name: "prompt", Description: "Ask for user input", Phony: domain.PhonyYes},
 	}
 
 	got, err := makex.NewRunner().Discover(context.Background(), testdataDir)
@@ -34,10 +35,28 @@ func TestDiscover(t *testing.T) {
 		t.Fatalf("got %d targets, want %d: %+v", len(got), len(want), got)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if !equalTarget(got[i], want[i]) {
 			t.Errorf("target %d: got %+v, want %+v", i, got[i], want[i])
 		}
 	}
+}
+
+// equalTarget compares two targets field by field. domain.Target holds a slice
+// and so is no longer comparable with ==; a hand-rolled helper keeps the test
+// honest without adding a module dependency for it.
+func equalTarget(a, b domain.Target) bool {
+	if a.Name != b.Name || a.Description != b.Description || a.Phony != b.Phony {
+		return false
+	}
+	if len(a.Prerequisites) != len(b.Prerequisites) {
+		return false
+	}
+	for i := range a.Prerequisites {
+		if a.Prerequisites[i] != b.Prerequisites[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestDiscoverNoMakefile checks that a directory without a Makefile yields no

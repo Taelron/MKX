@@ -4,15 +4,16 @@
 // Discovery is the two-strategy model ratified in ADR-M002 — `make -pRrq`
 // first, a regex scan of the Makefile as the fallback when make errors or
 // yields nothing.
+//
+// This file holds the impure edges: running make, reading Makefiles, and the
+// composition of the two. The parsing itself is in parse.go and is pure.
 package makex
 
 import (
-	"bufio"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -33,12 +34,18 @@ func NewRunner() *Runner {
 // Discover extracts Make targets from a project directory.
 // Tries `make -pRrq` first, falls back to regex parsing.
 func (r *Runner) Discover(ctx context.Context, projectPath string) ([]domain.Target, error) {
-	targets, err := parseWithMake(ctx, projectPath)
-	if err != nil || len(targets) == 0 {
-		targets, err = parseWithRegex(projectPath)
+	targets := parseDatabase(runDatabase(ctx, projectPath))
+	src := readMakefile(projectPath)
+
+	if len(targets) == 0 {
+		// The fallback carries its own descriptions, read from the same source.
+		targets = parseMakefile(src)
+	} else {
+		applyDescriptions(targets, descriptions(src))
 	}
+
 	sortTargets(targets)
-	return targets, err
+	return targets, nil
 }
 
 // TargetCommand returns the command that runs the named target in dir.
@@ -53,126 +60,28 @@ func sortTargets(targets []domain.Target) {
 	})
 }
 
-func parseWithMake(ctx context.Context, projectPath string) ([]domain.Target, error) {
+// runDatabase captures `make -pRrq` output for a project directory, or "" when
+// make cannot be run at all.
+func runDatabase(ctx context.Context, projectPath string) string {
 	cmd := exec.CommandContext(ctx, "make", "-pRrq", "-C", projectPath)
 	cmd.Stdin = nil
+	// The C locale is pinned per ADR-M002; the parser keys on the database's
+	// English section markers.
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+
 	out, _ := cmd.Output() // make -q exits non-zero, that's OK
-
-	var targets []domain.Target
-	seen := make(map[string]bool)
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	inFiles := false
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// skip the "# Files" section marker
-		if line == "# Files" {
-			inFiles = true
-			continue
-		}
-		if strings.HasPrefix(line, "# Not a target:") {
-			// next line is not a real target, skip it
-			if scanner.Scan() {
-				// consumed the fake target line
-			}
-			continue
-		}
-
-		if !inFiles {
-			continue
-		}
-
-		// target lines look like "name: deps"
-		if len(line) == 0 || line[0] == '#' || line[0] == '\t' || line[0] == '.' {
-			continue
-		}
-
-		idx := strings.IndexByte(line, ':')
-		if idx <= 0 {
-			continue
-		}
-
-		name := strings.TrimSpace(line[:idx])
-
-		// filter out pattern rules, variable refs, internal targets
-		if strings.ContainsAny(name, "%$") {
-			continue
-		}
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-
-		targets = append(targets, domain.Target{Name: name})
-	}
-
-	// enrich with descriptions from the Makefile comments
-	enrichDescriptions(projectPath, targets)
-
-	return targets, nil
+	return string(out)
 }
 
-var makeTargetRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.-]*):\s*(?:.*?##\s*(.*))?$`)
-
-func parseWithRegex(projectPath string) ([]domain.Target, error) {
+// readMakefile returns the project's Makefile source, or "" when it has none.
+// `Makefile` wins over `makefile` when both exist.
+func readMakefile(projectPath string) string {
 	for _, name := range []string{"Makefile", "makefile"} {
-		f, err := os.Open(filepath.Join(projectPath, name))
+		src, err := os.ReadFile(filepath.Join(projectPath, name))
 		if err != nil {
 			continue
 		}
-		defer f.Close()
-
-		var targets []domain.Target
-		seen := make(map[string]bool)
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			matches := makeTargetRe.FindStringSubmatch(scanner.Text())
-			if matches == nil {
-				continue
-			}
-			tName := matches[1]
-			if seen[tName] {
-				continue
-			}
-			seen[tName] = true
-			targets = append(targets, domain.Target{
-				Name:        tName,
-				Description: strings.TrimSpace(matches[2]),
-			})
-		}
-		return targets, nil
+		return string(src)
 	}
-	return nil, nil
-}
-
-var descRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.-]*):\s*.*?##\s*(.*)$`)
-
-func enrichDescriptions(projectPath string, targets []domain.Target) {
-	for _, name := range []string{"Makefile", "makefile"} {
-		f, err := os.Open(filepath.Join(projectPath, name))
-		if err != nil {
-			continue
-		}
-		defer f.Close()
-
-		descs := make(map[string]string)
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			matches := descRe.FindStringSubmatch(scanner.Text())
-			if matches != nil {
-				descs[matches[1]] = strings.TrimSpace(matches[2])
-			}
-		}
-
-		for i := range targets {
-			if d, ok := descs[targets[i].Name]; ok {
-				targets[i].Description = d
-			}
-		}
-		return
-	}
+	return ""
 }

@@ -1,13 +1,13 @@
 project alpha
   description: Alpha is a fixture project with four targets, one of them undescribed.
-  target build: Compile the binary
-  target clean: Remove build output
-  target install: 
-  target test: Run the test suite
+  target build (phony=no, prereqs=-): Compile the binary
+  target clean (phony=no, prereqs=-): Remove build output
+  target install (phony=no, prereqs=-): 
+  target test (phony=no, prereqs=-): Run the test suite
 project beta
   description: Beta is a fixture project whose Makefile declares a .PHONY special target.
-  target fmt: Format the source
-  target lint: Run the linter
+  target fmt (phony=yes, prereqs=-): Format the source
+  target lint (phony=yes, prereqs=-): Run the linter
 project beta/nested
   description: Beta Nested is a fixture project one level below another project.
-  target docs: Generate the documentation
+  target docs (phony=no, prereqs=-): Generate the documentation
