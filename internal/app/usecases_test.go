@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Gaetan-Jaminon/mkx/internal/app"
 	"github.com/Gaetan-Jaminon/mkx/internal/domain"
@@ -36,7 +37,94 @@ func (f *fakeRunner) TargetCommand(_ context.Context, dir, name string) domain.C
 	return domain.Command{Argv: []string{"make", name}, WorkDir: dir}
 }
 
-func newApp(s *fakeScanner, r *fakeRunner) *app.App { return app.New(s, r) }
+// fakeGitReader stands in for git. It records the context it was called with,
+// which is how the deadline App.RepoState applies is asserted without a
+// deliberately slow subprocess.
+type fakeGitReader struct {
+	state domain.RepoState
+	err   error
+
+	gotDir      string
+	gotDeadline time.Time
+	gotHasDL    bool
+	calls       int
+}
+
+func (f *fakeGitReader) State(ctx context.Context, dir string) (domain.RepoState, error) {
+	f.calls++
+	f.gotDir = dir
+	f.gotDeadline, f.gotHasDL = ctx.Deadline()
+	return f.state, f.err
+}
+
+func newApp(s *fakeScanner, r *fakeRunner) *app.App { return app.New(s, r, &fakeGitReader{}) }
+
+func newAppWithGit(s *fakeScanner, r *fakeRunner, g *fakeGitReader) *app.App {
+	return app.New(s, r, g)
+}
+
+// TestRepoStateBoundsTheRead checks the read runs under a deadline, and one
+// that is neither absent nor unreasonably far out. ADR-M003 requires captured
+// reads to be bounded; an unbounded read is a hung TUI.
+func TestRepoStateBoundsTheRead(t *testing.T) {
+	git := &fakeGitReader{state: domain.RepoState{Head: domain.HeadOnBranch, Branch: "main"}}
+	proj := domain.Project{Name: "alpha", Path: "/w/alpha"}
+
+	before := time.Now()
+	got, err := newAppWithGit(&fakeScanner{}, &fakeRunner{}, git).RepoState(context.Background(), proj)
+	if err != nil {
+		t.Fatalf("RepoState: %v", err)
+	}
+
+	if !git.gotHasDL {
+		t.Fatal("RepoState called the port with no deadline; a captured read must be bounded")
+	}
+	if budget := git.gotDeadline.Sub(before); budget <= 0 || budget > 10*time.Second {
+		t.Errorf("deadline budget = %v, want a positive budget no larger than a few seconds", budget)
+	}
+
+	// Resolved against the project's path, which is what git's upward
+	// discovery then resolves to the containing repository.
+	if git.gotDir != proj.Path {
+		t.Errorf("read ran against %q, want the project path %q", git.gotDir, proj.Path)
+	}
+	if got.Branch != "main" {
+		t.Errorf("Branch = %q, want the port's answer passed through", got.Branch)
+	}
+}
+
+// TestRepoStatePassesErrorsThrough checks the absence sentinel survives the use
+// case, so the UI can tell "no repository here" from "the read failed" with
+// errors.Is rather than by string-matching.
+func TestRepoStatePassesErrorsThrough(t *testing.T) {
+	git := &fakeGitReader{err: app.ErrNotARepository}
+	_, err := newAppWithGit(&fakeScanner{}, &fakeRunner{}, git).RepoState(
+		context.Background(), domain.Project{Path: "/w/plain"})
+
+	if !errors.Is(err, app.ErrNotARepository) {
+		t.Errorf("RepoState err = %v, want it to wrap app.ErrNotARepository", err)
+	}
+}
+
+// TestDiscoverProjectsReadsNoGitState pins the lazy-read decision at the layer
+// that would otherwise make it expensive: discovery walks the whole workspace,
+// and if it read git state per project, thirty projects would mean ninety
+// subprocesses before the TUI opened.
+func TestDiscoverProjectsReadsNoGitState(t *testing.T) {
+	git := &fakeGitReader{}
+	scanner := &fakeScanner{projects: []domain.Project{
+		{Name: "alpha", Path: "/w/alpha"},
+		{Name: "bravo", Path: "/w/bravo"},
+	}}
+
+	if _, err := newAppWithGit(scanner, &fakeRunner{}, git).DiscoverProjects(context.Background(), "/w"); err != nil {
+		t.Fatalf("DiscoverProjects: %v", err)
+	}
+
+	if git.calls != 0 {
+		t.Errorf("DiscoverProjects issued %d git reads, want 0 — reads are lazy on drill-in", git.calls)
+	}
+}
 
 // TestDiscoverProjectsComposesAndSorts checks that DiscoverProjects fills each
 // project's targets from the runner and returns the projects in

@@ -7,19 +7,37 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 )
+
+// gitReadTimeout bounds one whole RepoState read — all three git commands,
+// not one deadline each. ADR-M003 requires captured reads to be bounded; the
+// AC asks for "a context with a timeout", singular. When the budget runs out
+// mid-sequence the next command fails immediately rather than spawning.
+//
+// A warm local read of these commands is single-digit milliseconds. A cold or
+// very large working tree can push `status --porcelain` into the hundreds,
+// occasionally past a second on networked storage. The index-lock hazard is
+// eliminated by --no-optional-locks in the adapter rather than budgeted for
+// here. Two seconds is roughly two orders of magnitude above a warm read and
+// still short enough that a genuinely stuck read resolves while the user is
+// looking at the view.
+//
+// Unexported and unconfigurable, per ADR-M004.
+const gitReadTimeout = 2 * time.Second
 
 // App composes the ports into MkX's use cases. Constructed in cmd/mkx/main.go.
 type App struct {
 	scanner WorkspaceScanner
 	runner  MakeRunner
+	git     GitReader
 }
 
 // New wires the adapters behind their ports.
-func New(scanner WorkspaceScanner, runner MakeRunner) *App {
-	return &App{scanner: scanner, runner: runner}
+func New(scanner WorkspaceScanner, runner MakeRunner, git GitReader) *App {
+	return &App{scanner: scanner, runner: runner, git: git}
 }
 
 // DiscoverProjects walks the workspace, discovers each project's targets, and
@@ -67,6 +85,23 @@ func (a *App) PullAndRefresh(ctx context.Context, project domain.Project) (domai
 // RefreshTargets re-discovers a project's targets after a handover.
 func (a *App) RefreshTargets(ctx context.Context, project domain.Project) ([]domain.Target, error) {
 	return a.runner.Discover(ctx, project.Path)
+}
+
+// RepoState reads the git state of the repository containing the project.
+//
+// It returns ErrNotARepository when the project is in no repository — an
+// absence, not a failure. Any other error means the read did not produce a
+// usable answer and the caller must render unknown, never clean.
+//
+// The deadline is applied here rather than in the adapter for two reasons.
+// Bounding a read is a policy, and app is the port's only caller; and it is
+// the only placement a test can assert, since a fake GitReader can check
+// ctx.Deadline() where an adapter-side timeout would need a deliberately slow
+// subprocess to exercise.
+func (a *App) RepoState(ctx context.Context, project domain.Project) (domain.RepoState, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitReadTimeout)
+	defer cancel()
+	return a.git.State(ctx, project.Path)
 }
 
 // ReadmePath returns the project's README path, or "" when it has none.

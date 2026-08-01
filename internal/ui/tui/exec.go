@@ -64,8 +64,25 @@ func (c *commandExec) SetStdin(io.Reader)  { /* handled in Run */ }
 func (c *commandExec) SetStdout(io.Writer) { /* handled in Run */ }
 func (c *commandExec) SetStderr(io.Writer) { /* handled in Run */ }
 
+// handoverDone wraps the message every tea.Exec handover produces.
+//
+// Update keys RepoState invalidation on this one type rather than on each
+// handover's own message, so a handover added later invalidates automatically
+// with nothing to remember at the call site. ADR-M003 says RepoState is
+// invalidated by *every* handover, and a rule phrased as "remember to
+// invalidate in each case" was already broken by the code that existed before
+// this type did.
+//
+// inner is nil for a handover that has no result to report; Update unwraps,
+// invalidates, and only then dispatches inner if there is one.
+//
+// handover_guard_test.go enforces that every tea.Exec callback in this package
+// constructs one of these.
+type handoverDone struct{ inner tea.Msg }
+
 // handover runs cmd with full terminal handover, then turns the finished
-// commandExec into the message the model expects back.
+// commandExec into the message the model expects back — wrapped, so the
+// invalidation in Update fires before that message is dispatched.
 func handover(cmd domain.Command, label string, status statusFunc, done func(*commandExec) tea.Msg) tea.Cmd {
 	ce := &commandExec{
 		command: cmd,
@@ -73,7 +90,7 @@ func handover(cmd domain.Command, label string, status statusFunc, done func(*co
 		status:  status,
 		start:   time.Now(),
 	}
-	return tea.Exec(ce, func(error) tea.Msg { return done(ce) })
+	return tea.Exec(ce, func(error) tea.Msg { return handoverDone{inner: done(ce)} })
 }
 
 // targetStatus reports a Make target's exit code and how long it took.

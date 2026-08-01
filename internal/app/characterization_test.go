@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Gaetan-Jaminon/mkx/internal/adapter/gitx"
 	"github.com/Gaetan-Jaminon/mkx/internal/adapter/makex"
 	"github.com/Gaetan-Jaminon/mkx/internal/adapter/workspace"
 	"github.com/Gaetan-Jaminon/mkx/internal/app"
@@ -53,6 +54,11 @@ func TestCharacterization(t *testing.T) {
 	application := app.New(
 		workspace.NewScanner(workspace.DefaultExcludes, characterizationDepth),
 		makex.NewRunner(),
+		// Wired only so this compiles. DiscoverProjects never calls the git
+		// reader, and serializeProjects reads no git state — which is why the
+		// golden below is byte-identical across this change. A diff here means
+		// something touched discovery.
+		gitx.NewReader(),
 	)
 
 	projects, err := application.DiscoverProjects(context.Background(), root)
