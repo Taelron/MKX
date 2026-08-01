@@ -60,6 +60,11 @@ var (
 	Border = lipgloss.NewStyle().
 		Foreground(colorBorder)
 
+	// FilterBar is the `Filter: {text}` line below the top border. Cyan, per
+	// the @UI Patterns colour conventions, which give cyan to filter text.
+	FilterBar = lipgloss.NewStyle().
+			Foreground(colorCyan)
+
 	// HintKey is the key name in the bottom hint bar.
 	HintKey = lipgloss.NewStyle().
 		Foreground(colorBlue).
