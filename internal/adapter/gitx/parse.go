@@ -117,17 +117,24 @@ func parseDirty(porcelain string) bool {
 	return false
 }
 
-// parseBranches extracts the local branch names from `git branch` output.
+// parseBranches extracts the local branch names from
+// `git branch --format=%(refname:short)` output.
 //
-// Each line carries a two-character marker column — "  " for a branch, "* "
-// for the checked-out one, "+ " for one checked out in another worktree —
-// which is stripped rather than matched, so a new marker character does not
-// silently become part of a branch name.
+// The format is the one ADR-M003 names, and it gives one bare branch name per
+// line: no two-character marker column, so no column to strip and no marker
+// character that could silently become part of a name.
 //
-// A detached head adds a pseudo-entry that is not a branch: "* (HEAD detached
-// at d377e56)", or "* (no branch)" in older phrasings. Those are dropped by
-// shape — parenthesised, and containing a space, which git's own refname
-// rules forbid in a real branch name.
+// What --format does NOT remove is the pseudo-entry git synthesises when HEAD
+// is not on a branch. Verified against git 2.47.3, both of these appear in
+// --format output alongside the real branches:
+//
+//	(HEAD detached at c5020c5)
+//	(no branch, bisect started on main)
+//
+// They are not branches and must never reach a list offered for selection, so
+// they are dropped by shape rather than by matching either phrasing: a
+// parenthesised entry containing a space. git's own refname rules forbid a
+// space in a real branch name, so the rule cannot discard one.
 //
 // A repository with no commits yet produces no output at all, and therefore
 // no branches. That is a correct empty list, not a failed read; the caller
@@ -136,11 +143,7 @@ func parseBranches(out string) []string {
 	var branches []string
 	scanner := bufio.NewScanner(strings.NewReader(out))
 	for scanner.Scan() {
-		line := scanner.Text()
-		if len(line) >= 2 {
-			line = line[2:]
-		}
-		name := strings.TrimSpace(line)
+		name := strings.TrimSpace(scanner.Text())
 		if name == "" {
 			continue
 		}

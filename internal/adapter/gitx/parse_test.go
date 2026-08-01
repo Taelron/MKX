@@ -250,37 +250,45 @@ func TestParseBranches(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "plain list with the current-branch marker stripped",
-			in: `  develop
-* main
-  gaetanjaminon/tae-58
+			// --format gives one bare name per line, with no marker column.
+			name: "bare list",
+			in: `develop
+main
+gaetanjaminon/tae-58
 `,
 			want: []string{"develop", "main", "gaetanjaminon/tae-58"},
 		},
 		{
-			// git 2.47.3 emits this pseudo-entry alongside the real branches
-			// when HEAD is detached. It is not a branch and must not appear in
-			// a list offered for selection.
+			// --format drops the marker column but NOT this. git 2.47.3 still
+			// synthesises it alongside the real branches when HEAD is
+			// detached, and it is not a branch.
 			name: "detached pseudo-entry dropped, real branches kept",
-			in: `* (HEAD detached at 9d77cf6)
-  main
-  develop
+			in: `(HEAD detached at c5020c5)
+main
+develop
 `,
 			want: []string{"main", "develop"},
 		},
 		{
-			name: "older no-branch phrasing dropped",
-			in: `* (no branch)
-  main
+			// A second phrasing, captured from git 2.47.3 --format output
+			// while bisecting. The filter is by shape rather than by matching
+			// either wording, which is what makes this one drop too without
+			// the parser having to enumerate git's phrasings.
+			name: "a differently-worded pseudo-entry is dropped by the same rule",
+			in: `(no branch, bisect started on main)
+develop
+main
 `,
-			want: []string{"main"},
+			want: []string{"develop", "main"},
 		},
 		{
-			name: "worktree marker stripped like any other",
-			in: `+ feature/wt
-* main
-`,
-			want: []string{"feature/wt", "main"},
+			// The shape rule must not be so broad it discards a real branch.
+			// A parenthesised name with no space is a legal refname, so it is
+			// kept — the space is what separates a pseudo-entry from a branch
+			// someone genuinely named oddly.
+			name: "a parenthesised name with no space is a real branch",
+			in:   "(weird)\nmain\n",
+			want: []string{"(weird)", "main"},
 		},
 		{
 			// A repository with no commits yet. Zero branches is the correct
@@ -292,12 +300,12 @@ func TestParseBranches(t *testing.T) {
 		},
 		{
 			name: "blank lines ignored",
-			in:   "  main\n\n  develop\n",
+			in:   "main\n\ndevelop\n",
 			want: []string{"main", "develop"},
 		},
 		{
 			name: "no trailing newline",
-			in:   "* main",
+			in:   "main",
 			want: []string{"main"},
 		},
 	}
@@ -317,12 +325,12 @@ func TestParseBranches(t *testing.T) {
 	}
 }
 
-// TestParseBranchesKeepsNamesUntrimmedOfContent guards the two-character strip
-// against eating a branch name. The marker column is exactly two characters;
-// a name is never shortened by it.
-func TestParseBranchesKeepsNamesUntrimmedOfContent(t *testing.T) {
+// TestParseBranchesKeepsShortNames guards against a name being eaten by
+// anything that trims from the front. Two characters is the length the old
+// marker-column strip would have consumed entirely.
+func TestParseBranchesKeepsShortNames(t *testing.T) {
 	const name = "ab"
-	got := parseBranches("  " + name + "\n")
+	got := parseBranches(name + "\n")
 	if len(got) != 1 || got[0] != name {
 		t.Errorf("parseBranches lost content: got %v, want [%q]", got, name)
 	}

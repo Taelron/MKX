@@ -73,7 +73,11 @@ func (r *Reader) State(ctx context.Context, dir string) (domain.RepoState, error
 		return domain.RepoState{}, fmt.Errorf("git status: %w", err)
 	}
 
-	branch := run(ctx, dir, "branch")
+	// --format per ADR-M003, which names `git branch --format=...` as the
+	// permitted read. It drops the two-character marker column ("* ", "+ ",
+	// "  ") entirely, so there is no column to strip and no marker character
+	// that could be mistaken for part of a branch name.
+	branch := run(ctx, dir, "branch", "--format=%(refname:short)")
 	if err := branch.failure(); err != nil {
 		return domain.RepoState{}, fmt.Errorf("git branch: %w", err)
 	}
