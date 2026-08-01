@@ -31,7 +31,7 @@ func projectKeymap() keymap {
 				return m, nil
 			}},
 		{keys: []string{"enter"}, display: "Enter", label: "Targets",
-			help: "Open the selected project's target list", inBar: true,
+			help: "Open the project's target list", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				if len(m.projects) > 0 {
 					m.selectedProject = m.projectCursor
@@ -41,7 +41,7 @@ func projectKeymap() keymap {
 				return m, nil
 			}},
 		{keys: []string{"g"}, display: "g", label: "Pull",
-			help: "Git pull the selected project and re-read its targets", inBar: true,
+			help: "Git pull and re-read targets", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				if len(m.projects) == 0 {
 					return m, nil
@@ -49,7 +49,7 @@ func projectKeymap() keymap {
 				return m, m.pull(m.projectCursor)
 			}},
 		{keys: []string{"R"}, display: "R", label: "Readme",
-			help: "Show the selected project's README", inBar: true,
+			help: "Show the project's README", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				if len(m.projects) == 0 {
 					return m, nil
@@ -62,7 +62,7 @@ func projectKeymap() keymap {
 				return m, tea.Quit
 			}},
 		{keys: []string{"?"}, display: "?", label: "Help",
-			help: "Show the keys available in this view", inBar: true,
+			help: "Keys available in this view", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.showModal(modalHelp, "Help", "Projects", modalInput{}, helpKeymap()), nil
 			}},
@@ -98,7 +98,7 @@ func targetKeymap() keymap {
 				return m, m.runTarget(proj, proj.Targets[m.targetCursor])
 			}},
 		{keys: []string{"g"}, display: "g", label: "Pull",
-			help: "Git pull this project and re-read its targets", inBar: true,
+			help: "Git pull and re-read targets", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				if _, ok := m.currentProject(); !ok {
 					return m, nil
@@ -106,7 +106,7 @@ func targetKeymap() keymap {
 				return m, m.pull(m.selectedProject)
 			}},
 		{keys: []string{"R"}, display: "R", label: "Readme",
-			help: "Show this project's README", inBar: true,
+			help: "Show the project's README", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				proj, ok := m.currentProject()
 				if !ok {
@@ -129,7 +129,7 @@ func targetKeymap() keymap {
 				return m, tea.Quit
 			}},
 		{keys: []string{"?"}, display: "?", label: "Help",
-			help: "Show the keys available in this view", inBar: true,
+			help: "Keys available in this view", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				proj, _ := m.currentProject()
 				return m.showModal(modalHelp, "Help", proj.Name, modalInput{}, helpKeymap()), nil

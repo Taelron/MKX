@@ -133,10 +133,12 @@ func buildModalBox(title, context, body, hints string, maxInner int) string {
 
 // renderModalBody renders the content area for the active content type. Each
 // new modal adds exactly one case here.
-func (m Model) renderModalBody(maxWidth int) string {
+func (m Model) renderModalBody() string {
 	switch m.modal.content {
-	case modalNone:
-		return ""
+	case modalHelp:
+		// The underlying view's keymap, not the modal's own — that is what
+		// makes help context-sensitive.
+		return renderHelpBody(m.viewKeymap())
 	}
 	return ""
 }
@@ -153,7 +155,7 @@ func (m Model) renderModal(base string) string {
 	box := buildModalBox(
 		m.modal.title,
 		m.modal.context,
-		m.renderModalBody(m.modalMaxInnerWidth()),
+		m.renderModalBody(),
 		m.modal.keys.hintBar(),
 		m.modalMaxInnerWidth(),
 	)
