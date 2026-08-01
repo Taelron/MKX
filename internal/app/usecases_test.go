@@ -14,14 +14,14 @@ import (
 type fakeScanner struct {
 	projects []domain.Project
 	err      error
-	readme   string
+	readmes  map[string]string
 }
 
 func (f *fakeScanner) Scan(context.Context, string) ([]domain.Project, error) {
 	return f.projects, f.err
 }
 
-func (f *fakeScanner) ReadmePath(context.Context, string) string { return f.readme }
+func (f *fakeScanner) ReadmePath(_ context.Context, dir string) string { return f.readmes[dir] }
 
 type fakeRunner struct {
 	targets map[string][]domain.Target
@@ -139,14 +139,21 @@ func TestPullAndRefresh(t *testing.T) {
 	}
 }
 
-// TestReadmePath checks the use case passes the project directory through to
-// the scanner.
+// TestReadmePath checks the use case passes the project's directory — not its
+// name — through to the scanner, and reports "" for a project with no README.
 func TestReadmePath(t *testing.T) {
-	application := newApp(&fakeScanner{readme: "/w/alpha/README.md"}, &fakeRunner{})
+	scanner := &fakeScanner{readmes: map[string]string{
+		"/w/alpha": "/w/alpha/README.md",
+	}}
+	application := newApp(scanner, &fakeRunner{})
 
-	got := application.ReadmePath(context.Background(), domain.Project{Path: "/w/alpha"})
+	got := application.ReadmePath(context.Background(), domain.Project{Name: "alpha", Path: "/w/alpha"})
 	if got != "/w/alpha/README.md" {
 		t.Errorf("ReadmePath: got %q, want %q", got, "/w/alpha/README.md")
+	}
+
+	if got := application.ReadmePath(context.Background(), domain.Project{Name: "beta", Path: "/w/beta"}); got != "" {
+		t.Errorf("ReadmePath for a project with no README: got %q, want %q", got, "")
 	}
 }
 
