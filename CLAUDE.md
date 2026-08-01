@@ -8,7 +8,7 @@ Linear is canonical. Everything below points at Linear rather than restating it;
 
 **Phase 1 — minimum viable implementation.** Per @AI Workflow, Phase 1 ends with v1.0: an installable, usable artifact delivering the core value the spec promises. The phase is gated on that deliverable, not on a schedule.
 
-**Active milestone: M1 — Structure** (in progress) — [MkX project in Linear](https://linear.app/taelron/project/mkx-7067f8030ab4).
+**Active milestone: M2 — Target filtering and branch switching** (in progress) — [MkX project in Linear](https://linear.app/taelron/project/mkx-7067f8030ab4).
 
 This file is updated when the active milestone changes, typically once per milestone closure.
 
