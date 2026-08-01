@@ -19,3 +19,22 @@ jobs:
           go-version-file: go.mod
       - run: make build
       - run: make test
+
+  # The golden-oracle guards get their own job rather than a step in the matrix
+  # above, for two reasons. It runs on ubuntu only: the sabotage script uses GNU
+  # sed (`sed -i` with no argument, and `\n` in a replacement), which the BSD sed
+  # on macOS runners rejects — the job would fail there for a reason that has
+  # nothing to do with the guards. And as a separate job it runs concurrently
+  # with the matrix, so the slowest check in CI does not extend the critical path.
+  #
+  # Nothing in `go test ./...` touches the guard script, so unlike `make verify`
+  # this proof is not transitive. If it does not run here, it runs only when
+  # someone remembers.
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make verify-guards
