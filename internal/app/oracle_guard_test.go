@@ -91,8 +91,12 @@ func findTestFunc(t *testing.T, dir, name string) (string, *ast.FuncDecl) {
 }
 
 // buildConstraint returns the build-constraint line guarding path, or "" if the
-// file carries none. Only the text above the package clause can constrain the
-// file, so that is all it reads.
+// file carries none.
+//
+// Only the text above the package clause can constrain a file, and the scan
+// stops there deliberately: build-tag syntax appearing later in the file — in a
+// raw string literal holding Go source, say — is not a constraint, and reading
+// it as one would fail a file that compiles and runs perfectly well.
 func buildConstraint(t *testing.T, path string) string {
 	t.Helper()
 
@@ -101,9 +105,11 @@ func buildConstraint(t *testing.T, path string) string {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 
-	header, _, _ := strings.Cut(string(src), "\npackage ")
-	for _, line := range strings.Split(header, "\n") {
+	for _, line := range strings.Split(string(src), "\n") {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "package ") {
+			return "" // reached the package clause; anything below cannot constrain the file
+		}
 		if strings.HasPrefix(line, "//go:build") || strings.HasPrefix(line, "// +build") {
 			return line
 		}
