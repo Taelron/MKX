@@ -186,14 +186,30 @@ func countPrefix(s, prefix string) int {
 }
 
 // serializeProjects renders discovery results as deterministic, path-free text.
+//
+// Every field a Target retains appears on the target's own line. Keeping it to
+// one line is a constraint rather than a preference: lineDelta below is a
+// multiset over lines, so splitting phony onto a sub-line would emit one
+// identical `+ phony: no` entry per target and destroy the readability of the
+// rebaseline receipt — the thing the receipt exists for.
 func serializeProjects(projects []domain.Project) string {
 	var b strings.Builder
 	for _, p := range projects {
 		fmt.Fprintf(&b, "project %s\n", filepath.ToSlash(p.Name))
 		fmt.Fprintf(&b, "  description: %s\n", p.Description)
 		for _, t := range p.Targets {
-			fmt.Fprintf(&b, "  target %s: %s\n", t.Name, t.Description)
+			fmt.Fprintf(&b, "  target %s (phony=%s, prereqs=%s): %s\n",
+				t.Name, t.Phony, serializePrerequisites(t.Prerequisites), t.Description)
 		}
 	}
 	return b.String()
+}
+
+// serializePrerequisites renders a prerequisite list for the golden, using "-"
+// for none so the field is never empty and the line stays readable.
+func serializePrerequisites(prereqs []string) string {
+	if len(prereqs) == 0 {
+		return "-"
+	}
+	return strings.Join(prereqs, ",")
 }
