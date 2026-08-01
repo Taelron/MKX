@@ -1,15 +1,14 @@
-package main
+package tui
 
 import (
 	"bufio"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/glamour"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 )
 
 type readmeNotFoundMsg struct{}
@@ -53,31 +52,19 @@ func (r *readmeExec) Run() error {
 	return nil
 }
 
-func (r *readmeExec) SetStdin(rd io.Reader)  {}
-func (r *readmeExec) SetStdout(w io.Writer) {}
-func (r *readmeExec) SetStderr(w io.Writer) {}
+func (r *readmeExec) SetStdin(io.Reader)  {}
+func (r *readmeExec) SetStdout(io.Writer) {}
+func (r *readmeExec) SetStderr(io.Writer) {}
 
-// findReadme looks for a README file in the given directory.
-func findReadme(dir string) string {
-	candidates := []string{"README.md", "readme.md", "Readme.md", "README.MD"}
-	for _, name := range candidates {
-		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-	return ""
-}
-
-// viewReadme returns a command to display the README for a project.
-func viewReadme(proj project) tea.Cmd {
-	path := findReadme(proj.Path)
+// viewReadme returns a command to display the README at path, or a
+// not-found message when the project has none.
+func viewReadme(path string) tea.Cmd {
 	if path == "" {
 		return func() tea.Msg {
 			return readmeNotFoundMsg{}
 		}
 	}
-	return tea.Exec(&readmeExec{path: path}, func(err error) tea.Msg {
+	return tea.Exec(&readmeExec{path: path}, func(error) tea.Msg {
 		return nil
 	})
 }
