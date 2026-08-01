@@ -53,6 +53,9 @@ type Model struct {
 	// flash message
 	flash string
 
+	// modal overlay; the zero value is inactive
+	modal modalState
+
 	// terminal size
 	width  int
 	height int
@@ -227,13 +230,18 @@ func (m Model) pull(projectIndex int) tea.Cmd {
 }
 
 func (m Model) View() string {
+	var base string
 	switch m.view {
 	case viewProjects:
-		return m.renderProjectList()
+		base = m.renderProjectList()
 	case viewTargets:
-		return m.renderTargetList()
+		base = m.renderTargetList()
 	}
-	return ""
+
+	if m.modal.active {
+		return m.renderModal(base)
+	}
+	return base
 }
 
 // renderHintBar renders a view's keymap as the bottom bar, with any flash
