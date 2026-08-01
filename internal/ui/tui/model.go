@@ -236,12 +236,11 @@ func (m Model) View() string {
 	return ""
 }
 
-func (m Model) renderHintBar(hints [][]string) string {
-	var parts []string
-	for _, h := range hints {
-		parts = append(parts, styles.HintKey.Render("<"+h[0]+">")+" "+styles.HintAction.Render(h[1]))
-	}
-	bar := strings.Join(parts, "  ")
+// renderHintBar renders a view's keymap as the bottom bar, with any flash
+// message appended. The key/Action formatting lives on keymap.hintBar; this
+// function only owns the flash and the bar's width.
+func (m Model) renderHintBar(k keymap) string {
+	bar := k.hintBar()
 	if m.flash != "" {
 		bar += "  " + styles.Flash.Render(m.flash)
 	}
@@ -372,11 +371,11 @@ func (m Model) renderProjectList() string {
 	}
 
 	s += styles.Border.Render("└"+strings.Repeat("─", iw)+"┘") + "\n"
-	s += m.renderHintBar([][]string{
-		{"Enter", "Drill In"},
-		{"g", "Pull"},
-		{"?", "Readme"},
-		{"q", "Quit"},
+	s += m.renderHintBar(keymap{
+		{display: "Enter", label: "Drill In", inBar: true},
+		{display: "g", label: "Pull", inBar: true},
+		{display: "?", label: "Readme", inBar: true},
+		{display: "q", label: "Quit", inBar: true},
 	})
 	return s
 }
@@ -458,11 +457,11 @@ func (m Model) renderTargetList() string {
 
 	s += styles.Border.Render("└"+strings.Repeat("─", iw)+"┘") + "\n"
 
-	hints := [][]string{
-		{"r", "Run"},
-		{"g", "Pull"},
-		{"?", "Readme"},
-		{"Esc", "Back"},
+	hints := keymap{
+		{display: "r", label: "Run", inBar: true},
+		{display: "g", label: "Pull", inBar: true},
+		{display: "?", label: "Readme", inBar: true},
+		{display: "Esc", label: "Back", inBar: true},
 	}
 	if m.lastRun != nil {
 		status := "✓"
