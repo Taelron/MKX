@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 )
@@ -25,4 +26,25 @@ type MakeRunner interface {
 
 	// TargetCommand returns the command that runs the named target in dir.
 	TargetCommand(ctx context.Context, dir, name string) domain.Command
+}
+
+// ErrNotARepository is returned by GitReader.State when dir is not inside a
+// git repository at all.
+//
+// Per the MkX Domain Model this is an absence, not a failure: a Project
+// outside a repository simply has no RepoState. It is declared here rather
+// than in the adapter because ui/tui needs errors.Is on it, and ui/tui must
+// not import an adapter (ADR-M001).
+var ErrNotARepository = errors.New("not a git repository")
+
+// GitReader reads git state. It never mutates — per ADR-M003 pull and
+// checkout are handovers, not reads.
+type GitReader interface {
+	// State resolves dir to the repository containing it — dir need not be a
+	// repository root — and reports that repository's state.
+	//
+	// It returns ErrNotARepository when dir is inside no repository. Any
+	// other error means the read failed and the caller treats the state as
+	// unknown; it never means the tree is clean.
+	State(ctx context.Context, dir string) (domain.RepoState, error)
 }

@@ -254,7 +254,7 @@ func (r recordingRunner) TargetCommand(_ context.Context, dir, name string) doma
 func TestEnterRunsTheFilteredTargetNotTheUnfilteredOne(t *testing.T) {
 	var ran string
 	m := filterModel()
-	m.app = app.New(fakeScanner{}, recordingRunner{ran: &ran})
+	m.app = app.New(fakeScanner{}, recordingRunner{ran: &ran}, fakeGitReader{})
 	m.filter = filterState{active: false, text: "ver"} // matches only "verify"
 	m.targetCursor = 0
 

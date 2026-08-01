@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Gaetan-Jaminon/mkx/internal/adapter/gitx"
 	"github.com/Gaetan-Jaminon/mkx/internal/adapter/makex"
 	"github.com/Gaetan-Jaminon/mkx/internal/adapter/workspace"
 	"github.com/Gaetan-Jaminon/mkx/internal/app"
@@ -39,6 +40,7 @@ func main() {
 	application := app.New(
 		workspace.NewScanner(workspace.DefaultExcludes, workspace.DefaultMaxDepth),
 		makex.NewRunner(),
+		gitx.NewReader(),
 	)
 
 	projects, err := application.DiscoverProjects(rootCtx, root)

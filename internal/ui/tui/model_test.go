@@ -29,11 +29,29 @@ func (fakeRunner) TargetCommand(_ context.Context, dir, name string) domain.Comm
 	return domain.Command{Argv: []string{"make", name}, WorkDir: dir}
 }
 
+// fakeGitReader stands in for git. Every field is a literal the test sets, so
+// no test in this package spawns a git process or needs a repository on disk.
+type fakeGitReader struct {
+	state domain.RepoState
+	err   error
+
+	// calls counts reads, which is how "the project list issues none" and
+	// "re-entering a cached project is free" are asserted.
+	calls *int
+}
+
+func (f fakeGitReader) State(context.Context, string) (domain.RepoState, error) {
+	if f.calls != nil {
+		*f.calls++
+	}
+	return f.state, f.err
+}
+
 // testModel is a Model on the target list of a project with two targets,
 // cursor parked on the second.
 func testModel() Model {
 	return Model{
-		app:     app.New(fakeScanner{readme: "/tmp/README.md"}, fakeRunner{}),
+		app:     app.New(fakeScanner{readme: "/tmp/README.md"}, fakeRunner{}, fakeGitReader{}),
 		rootCtx: context.Background(),
 		projects: []domain.Project{{
 			Name: "alpha",

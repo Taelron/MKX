@@ -66,6 +66,74 @@ type Target struct {
 	Prerequisites []string
 }
 
+// Head is how a RepoState's HEAD resolved.
+//
+// It exists because `git rev-parse --abbrev-ref HEAD` prints the literal
+// string "HEAD" for both a detached head and a repository with no commits
+// yet — only the exit code separates them. Encoding either as a branch named
+// "HEAD" would be indistinguishable from a real branch, so the state is
+// carried as a discriminator rather than inferred from the branch name.
+//
+// The zero value is HeadUnknown, so a RepoState no read has filled in reads
+// as unknown rather than as a clean repository on an empty-named branch. That
+// is the "absence of a marker must not read as clean" rule enforced by the
+// zero value rather than by every caller remembering it — the same discipline
+// PhonyStatus applies.
+type Head int
+
+const (
+	// HeadUnknown means no read has resolved this repository's HEAD.
+	HeadUnknown Head = iota
+	// HeadOnBranch means HEAD is on a branch, whose name is in Branch.
+	HeadOnBranch
+	// HeadDetached means HEAD points at a commit, not a branch.
+	HeadDetached
+	// HeadUnborn means the repository has no commits yet. Per the MkX Domain
+	// Model this is a normal state, not an error: a freshly `git init`-ed
+	// project must render without a marker that reads as failure.
+	HeadUnborn
+)
+
+// String renders the head state for display and diagnostics.
+func (h Head) String() string {
+	switch h {
+	case HeadOnBranch:
+		return "on branch"
+	case HeadDetached:
+		return "detached"
+	case HeadUnborn:
+		return "unborn"
+	default:
+		return "unknown"
+	}
+}
+
+// RepoState is a Project's git state, resolved against the repository
+// containing the Project — which may sit above the Project's directory —
+// never against the Project directory in isolation.
+//
+// It is optional per Project: a Project outside any git repository has none,
+// and that is not an error condition. Per ADR-M003 it is read state, never
+// assumed current across a terminal handover.
+type RepoState struct {
+	// Head is how HEAD resolved. Consumers branch on this, never on Branch
+	// being empty.
+	Head Head
+
+	// Branch is the branch name, and is set only when Head is HeadOnBranch.
+	// It never holds the literal "HEAD" and never holds a display marker —
+	// markers are the UI's business.
+	Branch string
+
+	// Dirty is whether the working tree has any uncommitted change:
+	// modified, staged, or untracked.
+	Dirty bool
+
+	// Branches is the repository's local branches, for selection. It is empty
+	// for a repository with no commits yet.
+	Branches []string
+}
+
 // Command describes a subprocess to run with full terminal handover.
 //
 // Per ADR-M001 and ADR-M003, app use cases decide what to run and return a

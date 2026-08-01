@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 )
 
 // helpView opens the help overlay over the named view and returns the full
@@ -15,6 +17,16 @@ func helpView(t *testing.T, v view) string {
 
 	m := testModel()
 	m.view = v
+
+	// A resolved git state, so the header carries a settled segment rather
+	// than the in-flight "…". TestHelpFitsAtEightyByTwentyFour uses "…" as its
+	// truncation sentinel, and a header that is merely still loading is not a
+	// truncated help row. Seeding here keeps that guard checking exactly what
+	// it was written to check.
+	m = m.setGitEntry(m.projects[m.selectedProject].Name, gitEntry{
+		status: gitOK,
+		state:  domain.RepoState{Head: domain.HeadOnBranch, Branch: "main"},
+	})
 
 	opened, _ := m.viewKeymap().dispatch("?")(m, "?")
 	if !opened.modal.active {

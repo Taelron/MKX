@@ -1,7 +1,7 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-tui verify-guards rebaseline-golden tidy-check run
+.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards rebaseline-golden tidy-check run demo-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
@@ -16,6 +16,11 @@ verify: ## Check discovery behaviour against the committed golden
 
 verify-parser: ## Run the pure parser table tests
 	go test -v -count=1 ./internal/adapter/makex/
+
+verify-gitx: ## Run the pure git classifier and parser table tests
+	# No git process is spawned by these: they drive the classifiers from
+	# captured strings, so they pass identically on a box with no git.
+	go test -v -count=1 ./internal/adapter/gitx/
 
 verify-tui: ## Run the TUI keymap, modal and overlay tests by name
 	go test -v -count=1 ./internal/ui/tui/
@@ -32,3 +37,6 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 
 run: build ## Launch the TUI against testdata/fixtures
 	cd $(FIXTURES) && $(CURDIR)/$(BINARY)
+
+demo-git: build ## Build a throwaway workspace covering every git display state
+	./scripts/demo-git.sh

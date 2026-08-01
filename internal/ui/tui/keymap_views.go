@@ -33,14 +33,24 @@ func projectKeymap() keymap {
 		{keys: []string{"enter"}, display: "Enter", label: "Targets",
 			help: "Open the project's target list", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
-				if len(m.projects) > 0 {
-					m.selectedProject = m.projectCursor
-					m.targetCursor = 0
-					// A filter never survives leaving the view it filtered.
-					m.filter = filterState{}
-					m.view = viewTargets
+				if len(m.projects) == 0 {
+					return m, nil
 				}
-				return m, nil
+				m.selectedProject = m.projectCursor
+				m.targetCursor = 0
+				// A filter never survives leaving the view it filtered.
+				m.filter = filterState{}
+				m.view = viewTargets
+
+				// The only place a git read is issued by a key press. Drill-in
+				// is the moment "the selected Project" becomes meaningful in
+				// MkX — selectedProject is set here and nowhere else — and
+				// reading here rather than in the project list is what keeps a
+				// thirty-project workspace free until the user asks. The entry
+				// is seeded synchronously so the first render of the view
+				// below already carries a marker; the read itself runs off the
+				// event loop and never blocks it.
+				return m.ensureGitState(m.projects[m.selectedProject])
 			}},
 		{keys: []string{"g"}, display: "g", label: "Pull",
 			help: "Git pull and re-read targets", inBar: true,

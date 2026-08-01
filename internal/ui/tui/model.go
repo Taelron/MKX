@@ -50,6 +50,14 @@ type Model struct {
 	// filter mode over the target list; the zero value is no filter
 	filter filterState
 
+	// git state, keyed by project name and populated lazily on drill-in.
+	// Map membership is what distinguishes "never asked" from every outcome,
+	// so no separate requested flag exists. See git.go.
+	gitCache map[string]gitEntry
+	// gitGen is the invalidation generation. It is bumped by every handover;
+	// a read that lands carrying an older one is discarded.
+	gitGen int
+
 	// last run
 	lastRun *runResult
 
@@ -82,7 +90,56 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
+// Update is two stages: the handover unwrap, then the message dispatch.
+//
+// The unwrap is what makes ADR-M003's "RepoState is invalidated by every
+// handover" structural rather than a rule each call site has to remember.
+// Every tea.Exec in this package returns handoverDone (enforced by
+// handover_guard_test.go), so invalidation happens here, once, before the
+// wrapped message reaches its own case — and the cases below are untouched by
+// it. A handover added later inherits this with nothing to write.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var afterHandover tea.Cmd
+
+	if done, ok := msg.(handoverDone); ok {
+		m = m.invalidateGitState()
+		// Re-read immediately when a target view is open, so returning from a
+		// handover shows a brief in-flight marker and then the current state,
+		// rather than a state the handover may have made a lie.
+		m, afterHandover = m.refreshOpenGitState()
+
+		if done.inner == nil {
+			// A handover with nothing to report — the README viewer. It still
+			// invalidated; there is just no inner message to dispatch.
+			return m, afterHandover
+		}
+		msg = done.inner
+	}
+
+	model, cmd := m.dispatch(msg)
+	if afterHandover != nil {
+		return model, tea.Batch(cmd, afterHandover)
+	}
+	return model, cmd
+}
+
+// refreshOpenGitState re-issues the git read for the project currently on
+// screen, if any. Nothing is read when the project list is up: that view shows
+// no git state and must not start issuing reads through the back door.
+func (m Model) refreshOpenGitState() (Model, tea.Cmd) {
+	if m.view != viewTargets {
+		return m, nil
+	}
+	proj, ok := m.currentProject()
+	if !ok {
+		return m, nil
+	}
+	return m.ensureGitState(proj)
+}
+
+// dispatch is Update's message switch, reached with any handover already
+// unwrapped and its invalidation already applied.
+func (m Model) dispatch(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -96,6 +153,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case runFailedMsg:
 		m.flash = msg.err.Error()
 		return m, nil
+
+	case gitStateMsg:
+		// A failed read produces no flash and no error banner. Per ADR-M003 a
+		// failed or absent read is not an error condition — it is a state, and
+		// the header is where it is shown.
+		return m.applyGitState(msg), nil
 
 	case gitPullFinishedMsg:
 		targets, _ := m.app.RefreshTargets(m.rootCtx, m.projects[msg.projectIndex])
@@ -138,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Tier 2 sits after tier 1's unconditional return, so with a modal up the
 // filter never sees a key. When filter mode is inactive it is a no-op and the
 // path is what it was before filtering existed.
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	key := msg.String()
 
 	if m.modal.active {
@@ -267,9 +330,15 @@ func (m Model) renderHintBar(k keymap) string {
 	return styles.HintBar.Width(m.width).Render(bar)
 }
 
-func (m Model) renderHeader(section string, current, total int) string {
+// renderHeader renders the top bar: the title on the left, the position
+// counter hard right, and an optional already-styled middle segment beside the
+// title.
+//
+// middle is "" for the project list, which shows no git state — a test pins
+// that view's exact header output so the git segment cannot drift into it.
+func (m Model) renderHeader(section, middle string, current, total int) string {
 	title := "mkx › " + section
-	left := styles.Header.Render(title)
+	left := styles.Header.Render(title) + middle
 	count := styles.HeaderCount.Render(fmt.Sprintf("%d/%d", current, total))
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(count)
 	if gap < 0 {
@@ -312,7 +381,9 @@ func (m Model) renderProjectList() string {
 	iw := w - 2 // inner width (excluding │ borders)
 
 	// header
-	s := m.renderHeader("Projects", m.projectCursor+1, len(m.projects)) + "\n"
+	// No middle segment: the project list shows no git state, because it
+	// issues no git reads. See git.go for why that trade is deliberate.
+	s := m.renderHeader("Projects", "", m.projectCursor+1, len(m.projects)) + "\n"
 	s += styles.Border.Render("┌"+strings.Repeat("─", iw)+"┐") + "\n"
 
 	if len(m.projects) == 0 {
@@ -409,7 +480,7 @@ func (m Model) renderTargetList() string {
 	iw := w - 2
 
 	// header
-	s := m.renderHeader(proj.Name, m.targetCursor+1, len(targets)) + "\n"
+	s := m.renderHeader(proj.Name, m.gitSegment(proj.Name), m.targetCursor+1, len(targets)) + "\n"
 	s += styles.Border.Render("┌"+strings.Repeat("─", iw)+"┐") + "\n"
 
 	// The filter bar renders on the text, not on the mode: after Enter closes

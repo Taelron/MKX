@@ -65,6 +65,48 @@ var (
 	FilterBar = lipgloss.NewStyle().
 			Foreground(colorCyan)
 
+	// The git segment in the target view's header. Four styles for seven
+	// states, and the split is deliberate: @UI Patterns' colour conventions
+	// give red to failure, green to success, yellow to attention-not-failure,
+	// and dimmed to the merely muted. TAE-58 requires unknown, absent and
+	// clean to be distinguishable from each other, so those three get three
+	// different colours rather than three different words in one colour.
+	//
+	// All four carry the header's background, so the segment reads as part of
+	// the top bar rather than as text floating over it.
+	//
+	// Blue is deliberately unused here — it belongs to the adjacent header
+	// title, and reusing it would visually merge the two.
+
+	// GitClean is a repository with no uncommitted changes.
+	GitClean = lipgloss.NewStyle().
+			Foreground(colorGreen).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1)
+
+	// GitAttention is a repository wanting a second look but not in error —
+	// an uncommitted change, or a detached head.
+	GitAttention = lipgloss.NewStyle().
+			Foreground(colorYellow).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1)
+
+	// GitUnknown is a read that failed or timed out. Red, because a failed
+	// read is a failure — and because it must not be mistakable for the
+	// dimmed "there is no repository here", which is not.
+	GitUnknown = lipgloss.NewStyle().
+			Foreground(colorRed).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1)
+
+	// GitPending is the muted set: a read in flight, a project in no
+	// repository, and a repository with no commits yet. None of the three is
+	// an error condition, and none is rendered as one.
+	GitPending = lipgloss.NewStyle().
+			Foreground(colorDimmed).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1)
+
 	// HintKey is the key name in the bottom hint bar.
 	HintKey = lipgloss.NewStyle().
 		Foreground(colorBlue).
