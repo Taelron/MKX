@@ -7,18 +7,35 @@ FIXTURES := testdata/fixtures
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: build install test verify verify-parser verify-gitx verify-tui verify-hintbar-widths verify-guards verify-batch-guard verify-waitdelay-guard verify-hintbar-guard rebaseline-golden tidy-check run demo-git demo-hung-git
+# Which published release `install` fetches, and from where. VERSION=latest
+# follows the newest tag; pin it (VERSION=v0.5.0) to install a specific one.
+REPO    ?= Taelron/MKX
+VERSION ?= latest
+
+.PHONY: build install install-source check-install-path test verify verify-parser verify-gitx verify-tui verify-hintbar-widths verify-guards verify-batch-guard verify-waitdelay-guard verify-hintbar-guard rebaseline-golden tidy-check run demo-git demo-hung-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
 
-install: build ## Install the binary to $(BINDIR) — override PREFIX or BINDIR to put it elsewhere
-	# Depends on build rather than copying whatever ./mkx happens to be. An
-	# install target that ships a stale binary is worse than none: the copy on
-	# PATH is the one that gets run, and nothing about it says how old it is.
-	install -d $(BINDIR)
-	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
-	@echo "installed $(BINDIR)/$(BINARY)"
+install: ## Install a published release binary from GitHub — VERSION=vX.Y.Z to pin, or use install-source
+	@tmp=$$(mktemp -d); \
+	 trap 'rm -rf "$$tmp"' EXIT; \
+	 REPO=$(REPO) BINARY=$(BINARY) ./scripts/fetch-release.sh $(VERSION) "$$tmp" && \
+	 install -d $(BINDIR) && \
+	 install -m 0755 "$$tmp/$(BINARY)" $(BINDIR)/$(BINARY) && \
+	 echo "installed $(BINDIR)/$(BINARY) from release $(VERSION)"
+	@$(MAKE) --no-print-directory check-install-path
+
+install-source: build ## Install the binary built from this checkout, rather than a published release
+	@install -d $(BINDIR)
+	@install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
+	@echo "installed $(BINDIR)/$(BINARY) from this checkout ($$(git rev-parse --short HEAD 2>/dev/null || echo 'no git'))"
+	@$(MAKE) --no-print-directory check-install-path
+
+# Shared by both install paths: a binary that landed somewhere the shell never
+# searches, or that is shadowed by another copy, looks identical to a working
+# install right up until behaviour seems not to have changed.
+check-install-path:
 	@case ":$$PATH:" in \
 		*":$(BINDIR):"*) ;; \
 		*) echo "warning: $(BINDIR) is not on your PATH, so \`$(BINARY)\` will not resolve to it" ;; \
