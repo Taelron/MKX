@@ -1,7 +1,7 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards rebaseline-golden tidy-check run demo-git
+.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards verify-batch-guard rebaseline-golden tidy-check run demo-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
@@ -27,6 +27,9 @@ verify-tui: ## Run the TUI keymap, modal and overlay tests by name
 
 verify-guards: ## Prove the golden guards fail — sabotages a throwaway copy, never this tree
 	./scripts/verify-oracle-guards.sh
+
+verify-batch-guard: ## Prove the batched-input tests fail when either guard is removed
+	./scripts/verify-batch-guard.sh
 
 rebaseline-golden: ## Re-anchor the golden to current behaviour — reviewed behaviour changes only
 	go test -count=1 -v -run '^TestCharacterization$$' ./internal/app/ -rebaseline

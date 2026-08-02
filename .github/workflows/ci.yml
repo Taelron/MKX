@@ -30,6 +30,11 @@ jobs:
   # Nothing in `go test ./...` touches the guard script, so unlike `make verify`
   # this proof is not transitive. If it does not run here, it runs only when
   # someone remembers.
+  #
+  # The same is true of every sabotage script, so they share this job rather
+  # than each getting one: they are all ubuntu-only, all off the critical path,
+  # and all proving the same class of claim — that a test which is supposed to
+  # catch something actually goes red when that something is broken.
   guards:
     runs-on: ubuntu-latest
     steps:
@@ -38,3 +43,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make verify-guards
+      # TAE-61's batch guards. The deliverable there is behaviour that must not
+      # happen — no pasted or replayed input may fire a checkout, a pull or a
+      # target run — so a green suite shows only that nothing tripped. This
+      # removes each of handleKey's two guards in a throwaway copy and fails
+      # unless the batch tests go red by name.
+      - run: make verify-batch-guard

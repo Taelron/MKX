@@ -106,6 +106,11 @@ func targetKeymap() keymap {
 			// Kept short: the help overlay's inner width is ~44 columns at
 			// 80×24, and a row that truncates fails the suite.
 			help: "Filter by name or description", inBar: true,
+			// The only opensTextSink binding in the product. Its whole effect
+			// is to open filter mode, so the rest of a pasted batch has
+			// somewhere to land. Nothing else here qualifies, and no modal
+			// keymap declares one — pinned by TestOnlyTheFilterBindingOpensATextSink.
+			opensTextSink: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.activateFilter(), nil
 			}},
