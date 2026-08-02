@@ -132,35 +132,55 @@ func TestHintBarsMatchTheBaselineFormats(t *testing.T) {
 	}
 }
 
-// TestTargetHintBarFitsOnOneLine is a width guard, not a formatting
-// preference.
+// TestTargetHintBarFitsAtTheSupportedMinimum replaces TAE-59's
+// TestTargetHintBarFitsOnOneLine. The ≤78 assertion is the same; what it means
+// is not.
 //
-// styles.HintBar is Width(80) with Padding(0,1), so it has 78 content columns —
-// and it is fixed at 80 regardless of the terminal, so the ceiling holds on a
-// 200-column terminal too. With b/Branch the target bar is exactly 78 of 78. At
-// 79 lipgloss word-wraps rather than truncating, the bar silently becomes two
-// rows, and every height-sensitive test in this suite breaks with no line in
-// the failure pointing at the cause.
+// It used to guard a broken render: the bar was handed to lipgloss at the
+// terminal's width, lipgloss word-wrapped rather than truncating, and a
+// seventy-ninth column silently made the bar two rows — breaking every
+// height-sensitive test in this package for a reason none of those failures
+// named. TAE-60 removed that: fitHintBar degrades instead, so no bar can wrap
+// at any width.
 //
-// So the next binding added to this view fails here instead, loudly, saying
-// what to do about it. The underlying fixed width is TAE-60's to fix; this test
-// is what TAE-60 replaces, not what it deletes.
-func TestTargetHintBarFitsOnOneLine(t *testing.T) {
-	const barContentWidth = 78
+// So this now guards a product decision. 78 is the target view's content width
+// at 80 columns, the supported minimum per @UI Patterns, and the bar is exactly
+// 78 of 78. The first view that exceeds it starts degrading *at the supported
+// minimum* — showing a +N marker on a standard terminal. That is a choice, and
+// it should be made deliberately rather than discovered by a user on an
+// 80-column terminal.
+//
+// "TAE-60 makes room" is not what happened. Degradation is now safe; the
+// ceiling is unchanged.
+func TestTargetHintBarFitsAtTheSupportedMinimum(t *testing.T) {
+	const barContentWidth = 78 // 80 columns less styles.HintBar's Padding(0,1)
 
 	if w := lipgloss.Width(ansi.Strip(targetKeymap().hintBar())); w > barContentWidth {
-		t.Errorf("the target hint bar is %d columns wide, and styles.HintBar has only %d; "+
-			"it will wrap to a second line. Shorten a label, drop a binding from the bar, "+
-			"or fix the fixed width (TAE-60) — do not just raise this number",
+		t.Errorf("the target hint bar is %d columns wide and only %d fit at the "+
+			"supported minimum of 80, so it now degrades to a +N marker there.\n"+
+			"Three legitimate answers: shorten a label, mark the new binding help-only "+
+			"(inBar: false), or accept degradation at 80 and edit this test on purpose. "+
+			"Raising the number without choosing one of those is the silent option.",
 			w, barContentWidth)
 	}
 
-	// The claim itself, through the real style rather than through arithmetic
-	// about it: one rendered line at 80 columns.
+	// The claim itself, through the real render rather than through arithmetic
+	// about it: at 80 columns the whole prescribed bar is present, on one line,
+	// with no marker.
 	m := testModel()
 	m.width = 80
-	if n := strings.Count(m.renderHintBar(targetKeymap()), "\n"); n != 0 {
+	bar := ansi.Strip(m.renderHintBar(targetKeymap()))
+
+	if n := strings.Count(bar, "\n"); n != 0 {
 		t.Errorf("the target hint bar rendered on %d lines at width 80, want 1", n+1)
+	}
+	if strings.Contains(bar, "+") {
+		t.Errorf("the bar carries an overflow marker at the supported minimum: %q", bar)
+	}
+	// Trimmed of styles.HintBar's one column of padding on each side.
+	if got, want := strings.TrimSpace(bar), ansi.Strip(targetKeymap().hintBar()); got != want {
+		t.Errorf("the rendered bar at 80 columns is not the prescribed format\n"+
+			"got  %q\nwant %q", got, want)
 	}
 }
 

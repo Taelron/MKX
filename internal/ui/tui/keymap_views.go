@@ -73,8 +73,11 @@ func projectKeymap() keymap {
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				return m, tea.Quit
 			}},
+		// The root view's only pinned entry. There is no Esc/Back to pin —
+		// q/Quit sits where the patterns put Esc, and it is help-recoverable
+		// like every other droppable entry.
 		{keys: []string{"?"}, display: "?", label: "Help",
-			help: "Keys available in this view", inBar: true,
+			help: "Keys available in this view", inBar: true, barPinned: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				return m.showModal(modalHelp, "Help", "Projects", modalInput{}, helpKeymap()), nil
 			}},
@@ -159,8 +162,11 @@ func targetKeymap() keymap {
 				}
 				return m, viewReadme(m.app.ReadmePath(m.rootCtx, proj))
 			}},
+		// Pinned: the way out of the view. Dropping it right-to-left by bar
+		// order would take it at 79 columns while keeping R/Readme, which is
+		// why the pin is a declared property rather than derived from position.
 		{keys: []string{"esc"}, display: "Esc", label: "Back",
-			help: "Back to the project list", inBar: true,
+			help: "Back to the project list", inBar: true, barPinned: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				// Esc clears whenever there is anything to clear — filter mode
 				// active, or mode closed by Enter with the text still in
@@ -181,8 +187,10 @@ func targetKeymap() keymap {
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				return m, tea.Quit
 			}},
+		// Pinned, and the last entry to yield anywhere: it is how the user
+		// finds out what the marker counted.
 		{keys: []string{"?"}, display: "?", label: "Help",
-			help: "Keys available in this view", inBar: true,
+			help: "Keys available in this view", inBar: true, barPinned: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {
 				proj, _ := m.currentProject()
 				return m.showModal(modalHelp, "Help", proj.Name, modalInput{}, helpKeymap()), nil

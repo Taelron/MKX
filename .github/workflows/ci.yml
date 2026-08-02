@@ -55,3 +55,10 @@ jobs:
       # descendant-holds-the-pipe case goes red while the case that does not
       # need the bound stays green.
       - run: make verify-waitdelay-guard
+      # TAE-60's hint bar fit, again the same class of claim: the deliverable is
+      # a bar that does not wrap, which a green suite cannot demonstrate. This
+      # reverts renderHintBar to the naive width in a throwaway copy and fails
+      # unless the width table goes red at 79, 60 and 40 while staying green at
+      # 80 — where the bar fits even unfitted, so a sabotage that reddened it
+      # too would mean the copy was broken rather than the mechanism proven.
+      - run: make verify-hintbar-guard

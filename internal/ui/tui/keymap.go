@@ -29,6 +29,20 @@ type binding struct {
 	// inBar marks a binding that appears in the hint bar. Help-only bindings
 	// (q/Quit in the target view) clear it.
 	inBar bool
+	// barPinned marks a bar entry the fitter may never drop when the bar does
+	// not fit: the view's exits, Esc/Back and ?/Help. Everything else yields to
+	// width, left to right, behind a +N marker.
+	//
+	// The zero value is droppable, so a binding added later degrades by default
+	// rather than silently claiming survival — the same reasoning opensTextSink
+	// carries above.
+	//
+	// Two tiers rather than a priority int: the data supports "the user can
+	// always leave and can always reach the full list" and nothing finer.
+	// Priority is not derivable from bar order either — dropping right to left
+	// would take Esc/Back off the target view at 79 columns while keeping
+	// R/Readme. See hintbar.go.
+	barPinned bool
 	// opensTextSink marks the one kind of binding a batch may fire: one whose
 	// whole effect is to switch the view into a mode that captures keystrokes
 	// as text. Today that is `/` and nothing else. The zero value is false, so
@@ -49,13 +63,38 @@ type binding struct {
 // bar, its help overlay and its key dispatch.
 type keymap []binding
 
-// hintBar renders the inBar bindings as styled "display/label" pairs separated
-// by two spaces, per the @UI Patterns hint bar format.
+// hintEntry is one deduped hint bar entry, in display order. It is what the
+// bar is assembled from, so the fitter can drop and count entries rather than
+// slicing a finished string — see fitHintBar in hintbar.go.
+type hintEntry struct {
+	display string
+	label   string
+	pinned  bool
+}
+
+// text is the entry as the user reads it, unstyled: "↑↓/Navigate". Widths are
+// measured from this rather than from render(), so a measurement is the same
+// under a TTY and under `go test`, where lipgloss emits no escapes.
+func (e hintEntry) text() string { return e.display + "/" + e.label }
+
+// render is the entry as the bar shows it: the key styled, the /label dimmed.
+func (e hintEntry) render() string {
+	return styles.HintKey.Render(e.display) + styles.HintAction.Render("/"+e.label)
+}
+
+// hintBarSep separates hint bar entries, per the @UI Patterns format.
+const hintBarSep = "  "
+
+// barEntries returns the inBar bindings as hint entries, in declaration order.
 //
 // Entries are deduped on display+label: ↑/k and ↓/j are four keys and two
 // handlers, but one visible ↑↓/Navigate.
-func (k keymap) hintBar() string {
-	var parts []string
+//
+// hintBar and the width fitter both build on this, so there is one dedup path
+// and the full-width bar and a degraded one can never disagree about what the
+// view's entries are.
+func (k keymap) barEntries() []hintEntry {
+	var entries []hintEntry
 	seen := make(map[string]bool)
 
 	for _, b := range k {
@@ -67,10 +106,28 @@ func (k keymap) hintBar() string {
 			continue
 		}
 		seen[key] = true
-		parts = append(parts, styles.HintKey.Render(b.display)+styles.HintAction.Render("/"+b.label))
+		entries = append(entries, hintEntry{display: b.display, label: b.label, pinned: b.barPinned})
 	}
 
-	return strings.Join(parts, "  ")
+	return entries
+}
+
+// hintBar renders every bar entry as styled "display/label" pairs separated by
+// two spaces, per the @UI Patterns hint bar format.
+//
+// This is the bar at its natural width, with nothing dropped — the prescribed
+// format, which TestHintBarsMatchTheBaselineFormats pins byte for byte. What
+// actually reaches the screen goes through fitHintBar, which may drop entries
+// when the terminal is too narrow to hold them all.
+func (k keymap) hintBar() string {
+	entries := k.barEntries()
+
+	parts := make([]string, 0, len(entries))
+	for _, e := range entries {
+		parts = append(parts, e.render())
+	}
+
+	return strings.Join(parts, hintBarSep)
 }
 
 // helpRows renders every binding — not just the ones in the hint bar — as

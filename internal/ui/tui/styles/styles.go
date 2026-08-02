@@ -116,6 +116,15 @@ var (
 	HintAction = lipgloss.NewStyle().
 			Foreground(colorDimmed)
 
+	// HintOverflow is the +N marker standing in for the hint entries a narrow
+	// terminal could not fit. Yellow and bold, per the colour conventions'
+	// "attention required": the marker exists to be noticed, and a dimmed
+	// marker in a dimmed bar would be exactly the silent degradation TAE-60
+	// forbids.
+	HintOverflow = lipgloss.NewStyle().
+			Foreground(colorYellow).
+			Bold(true)
+
 	// HintBar is the bottom bar itself.
 	HintBar = lipgloss.NewStyle().
 		Background(lipgloss.Color("235")).
