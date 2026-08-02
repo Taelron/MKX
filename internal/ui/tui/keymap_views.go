@@ -131,6 +131,12 @@ func targetKeymap() keymap {
 				}
 				return m, m.runTarget(proj, targets[m.targetCursor])
 			}},
+		// Target view only. TAE-58 reads git state lazily on drill-in, so no
+		// RepoState exists while the project list is showing and the picker
+		// would have nothing to populate from.
+		{keys: []string{"b"}, display: "b", label: "Branch",
+			help: "Switch the checked-out branch", inBar: true,
+			handler: openBranchModal},
 		{keys: []string{"g"}, display: "g", label: "Pull",
 			help: "Git pull and re-read targets", inBar: true,
 			handler: func(m Model, _ string) (Model, tea.Cmd) {

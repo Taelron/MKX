@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 	"github.com/Gaetan-Jaminon/mkx/internal/ui/tui/styles"
 )
 
@@ -17,8 +18,15 @@ type modalContent int
 const (
 	modalNone modalContent = iota
 	modalHelp
-	// The M2 branch picker lands here, and costs one enum value, one
-	// renderModalBody case, one keymap func and one showModal call.
+	// modalBranchPicker is the select picker over a repository's local
+	// branches. It is the one content type whose body windows rather than
+	// fits — see renderBranchPickerBody for the @UI Patterns rule that
+	// permits it.
+	modalBranchPicker
+	// modalNotice is a read-only sentence: the legible reason a branch
+	// picker cannot be shown. Info content, so its bar closes rather than
+	// confirms.
+	modalNotice
 )
 
 // modalInput is the cursor and text state interactive content types need. Info
@@ -42,6 +50,23 @@ type modalState struct {
 	// type shows the prescribed Enter/Confirm  Esc/Cancel.
 	keys  keymap
 	input modalInput
+
+	// repo is the git state the modal was opened against, snapshotted once
+	// when it opened.
+	//
+	// It is the modal's single source: the picker's rows are repo.Branches,
+	// the (current) marker is repo.Branch, and app.CheckoutBranch validates
+	// the selection against this same value. m.gitCache is deliberately not
+	// consulted again while the modal is up — a read landing mid-modal
+	// replaces that entry, and validating a visible row against a list the
+	// user cannot see is a refusal for a branch on screen in front of them.
+	//
+	// The guarantee is internal consistency, not currency: a branch deleted
+	// on disk while the modal is open is git's refusal to report, per
+	// ADR-M003, not MkX's to pre-empt.
+	repo domain.RepoState
+	// notice is modalNotice's sentence.
+	notice string
 }
 
 // showModal opens a modal over the current view.
@@ -162,6 +187,11 @@ func (m Model) renderModalBody() string {
 		// The underlying view's keymap, not the modal's own — that is what
 		// makes help context-sensitive.
 		return renderHelpBody(m.viewKeymap())
+	case modalBranchPicker:
+		return renderBranchPickerBody(
+			m.modal.repo.Branches, m.modal.repo.Branch, m.modal.input.cursor, branchPickerRows)
+	case modalNotice:
+		return renderNoticeBody(m.modal.notice, m.modalMaxInnerWidth())
 	}
 	return ""
 }

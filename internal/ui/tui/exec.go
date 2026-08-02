@@ -102,6 +102,20 @@ func targetStatus(exitCode int, _ error, d time.Duration) string {
 	return fmt.Sprintf("%s (%s)", status, d.Round(time.Second))
 }
 
+// checkoutStatus reports whether the checkout succeeded, quoting git's own
+// error.
+//
+// It names no branch, on either path. Git has already printed "Switched to
+// branch 'x'" — or its refusal — one line above this, and git's line is the
+// only one on screen written by something that read where HEAD actually
+// points.
+func checkoutStatus(_ int, err error, _ time.Duration) string {
+	if err != nil {
+		return fmt.Sprintf("✗ %v", err)
+	}
+	return "✓ checkout complete"
+}
+
 // pullStatus reports whether git pull succeeded, quoting git's own error.
 func pullStatus(_ int, err error, _ time.Duration) string {
 	if err != nil {

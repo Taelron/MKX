@@ -86,6 +86,12 @@ type gitPullFinishedMsg struct {
 	err          error
 }
 
+// checkoutFinishedMsg says a checkout handover returned. It carries nothing,
+// and that is the design: neither the exit code nor the selected branch is a
+// reading of where HEAD points, so neither may reach the display. See its case
+// in dispatch.
+type checkoutFinishedMsg struct{}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }
@@ -171,6 +177,18 @@ func (m Model) dispatch(msg tea.Msg) (Model, tea.Cmd) {
 		if m.view == viewTargets {
 			m.targetCursor = 0
 		}
+		return m, tea.EnterAltScreen
+
+	case checkoutFinishedMsg:
+		// Nothing is recorded and no flash is set, on either outcome.
+		//
+		// The hazard this case exists to avoid is writing anything here at
+		// all: a flash naming the selected branch, or a success line derived
+		// from the exit code, would be a claim about what is checked out made
+		// by code that never read the repository. A refused checkout would
+		// then announce the branch it failed to switch to. What the header
+		// shows next comes from the fresh RepoState read Update's handover
+		// unwrap has already issued, and from nothing else.
 		return m, tea.EnterAltScreen
 
 	case execFinishedMsg:
