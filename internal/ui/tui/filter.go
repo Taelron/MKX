@@ -57,8 +57,26 @@ func (m Model) setFilterText(s string) Model {
 	return m
 }
 
+// appendFilterRunes appends rs to the filter text, dropping control runes.
+//
+// The stripping is here rather than at either call site because both of them
+// go through this one function: the tier-2 rune capture and the batch path in
+// batch.go. A bracketed paste carries every rune between the markers, so a
+// two-line clipboard entry brings \r and \n with it, and routed into the
+// filter bar they render as garbage that matches nothing.
+//
+// Space is 0x20 and survives — target descriptions are full of them, and the
+// capture accepts KeySpace precisely so a filter can contain one.
 func (m Model) appendFilterRunes(rs []rune) Model {
-	return m.setFilterText(m.filter.text + string(rs))
+	var b strings.Builder
+	b.WriteString(m.filter.text)
+	for _, r := range rs {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return m.setFilterText(b.String())
 }
 
 // backspaceFilter deletes the last rune, not the last byte: a multi-byte rune

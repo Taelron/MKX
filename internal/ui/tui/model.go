@@ -219,10 +219,27 @@ func (m Model) dispatch(msg tea.Msg) (Model, tea.Cmd) {
 // Tier 2 sits after tier 1's unconditional return, so with a modal up the
 // filter never sees a key. When filter mode is inactive it is a no-op and the
 // path is what it was before filtering existed.
+//
+// Tiers 1 and 3 each branch on batch-ness before consulting their keymap: a
+// KeyMsg carrying runes that arrived in a single terminal read never reaches
+// keymap.dispatch, in either tier. That is the safety property, and the two
+// guards below are where it lives. Tier 2 is untouched — filter mode already
+// handled batches correctly, because it captures runes rather than matching a
+// key string. See batch.go for the rule and why it is shaped this way.
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	key := msg.String()
 
 	if m.modal.active {
+		// batch-guard: tier 1. A raw multiplexer replay spelling `enter`
+		// arrives as KeyRunes("enter"), whose String() is "enter" — so without
+		// this the branch picker's Enter binding fires and replayed text
+		// performs a checkout. Inside a modal a batch is a silent no-op rather
+		// than a flash: the modal already contracts every unbound key to
+		// silence, and a flash rendered into the dimmed hint bar behind an
+		// overlay would be the odd one out.
+		if isBatch(msg) {
+			return m, nil
+		}
 		if h := m.modal.keys.dispatch(key); h != nil {
 			return h(m, key)
 		}
@@ -256,6 +273,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		case msg.Type == tea.KeyBackspace:
 			return m.backspaceFilter(), nil
 		}
+	}
+
+	// batch-guard: tier 3. A batch never reaches the view's keymap, so no
+	// whole-string match is ever performed on one — which is what makes `b`,
+	// `g`, `R`, `q`, `enter`, `esc` and `ctrl+c` unreachable from pasted or
+	// replayed input structurally, rather than by an exclusion list a future
+	// binding could fall off.
+	if isBatch(msg) {
+		return m.dispatchBatch(m.viewKeymap(), msg)
 	}
 
 	if h := m.viewKeymap().dispatch(key); h != nil {
@@ -584,7 +610,15 @@ func (m Model) renderTargetList() string {
 
 	s += styles.Border.Render("└"+strings.Repeat("─", iw)+"┘") + "\n"
 
-	if m.lastRun != nil {
+	// The run receipt fills the flash slot only when nothing else has claimed
+	// it. An explicit flash is newer than the receipt, and unconditionally
+	// overwriting it made the ignored-batch message invisible in the common
+	// state of "having just run something" — which would make the legibility
+	// criterion false exactly where a user is most likely to paste. It repairs
+	// a pre-existing instance of the same clobber too: gitPullFinishedMsg's
+	// "Pulled & refreshed" was being replaced by the receipt on the next
+	// render. Widening the flash guarantee is deliberate, not incidental.
+	if m.flash == "" && m.lastRun != nil {
 		status := "✓"
 		if m.lastRun.ExitCode != 0 {
 			status = fmt.Sprintf("✗ exit %d", m.lastRun.ExitCode)

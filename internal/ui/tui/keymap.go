@@ -29,6 +29,17 @@ type binding struct {
 	// inBar marks a binding that appears in the hint bar. Help-only bindings
 	// (q/Quit in the target view) clear it.
 	inBar bool
+	// opensTextSink marks the one kind of binding a batch may fire: one whose
+	// whole effect is to switch the view into a mode that captures keystrokes
+	// as text. Today that is `/` and nothing else. The zero value is false, so
+	// a binding added later is inert to pasted input until someone
+	// deliberately says otherwise.
+	//
+	// It is not "safe to fire from a paste". `?` is safe to fire and opens no
+	// sink, so ticking it would make a pasted `?xyz` open help and drop `xyz`.
+	// Naming the field for the capability means it can only be ticked where
+	// the rest of the batch has somewhere to go. See batch.go.
+	opensTextSink bool
 	// handler runs the action. It receives the key that triggered it, so one
 	// handler can serve several keys.
 	handler func(Model, string) (Model, tea.Cmd)
@@ -92,13 +103,40 @@ func (k keymap) helpRows() []string {
 	return out
 }
 
-// dispatch returns the handler for key, or nil when no binding claims it. The
+// bindingFor returns the binding that claims key, or false when none does. The
 // first match wins, so an earlier binding shadows a later one.
-func (k keymap) dispatch(key string) func(Model, string) (Model, tea.Cmd) {
+//
+// dispatch wants only the handler; the batch path needs the whole binding, to
+// read opensTextSink before it fires anything. One lookup serves both.
+func (k keymap) bindingFor(key string) (binding, bool) {
 	for _, b := range k {
 		if slices.Contains(b.keys, key) {
-			return b.handler
+			return b, true
 		}
 	}
+	return binding{}, false
+}
+
+// dispatch returns the handler for key, or nil when no binding claims it.
+func (k keymap) dispatch(key string) func(Model, string) (Model, tea.Cmd) {
+	if b, ok := k.bindingFor(key); ok {
+		return b.handler
+	}
 	return nil
+}
+
+// textSink returns this keymap's text-sink binding, if it declares one.
+//
+// It answers "does this view have a sink at all, and which key opens it" —
+// which is what ignoredBatchFlash needs to name a key in the message a view
+// shows when it drops a batch. dispatchBatch does not use it: that path
+// already has a key in hand, so it looks the lead rune up with bindingFor and
+// reads opensTextSink off the binding it gets back.
+func (k keymap) textSink() (binding, bool) {
+	for _, b := range k {
+		if b.opensTextSink {
+			return b, true
+		}
+	}
+	return binding{}, false
 }
