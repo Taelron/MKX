@@ -1,7 +1,7 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards verify-batch-guard rebaseline-golden tidy-check run demo-git
+.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards verify-batch-guard verify-waitdelay-guard rebaseline-golden tidy-check run demo-git demo-hung-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
@@ -17,9 +17,11 @@ verify: ## Check discovery behaviour against the committed golden
 verify-parser: ## Run the pure parser table tests
 	go test -v -count=1 ./internal/adapter/makex/
 
-verify-gitx: ## Run the pure git classifier and parser table tests
-	# No git process is spawned by these: they drive the classifiers from
-	# captured strings, so they pass identically on a box with no git.
+verify-gitx: ## Run the git classifier tests and the bounded-read test
+	# The classifier and parser tests spawn nothing: they drive the classifiers
+	# from captured strings, so they pass identically on a box with no git. The
+	# bounded-read test (unix only) is the one exception, and it does not
+	# invoke the real binary either — it puts a shell shim named `git` on PATH.
 	go test -v -count=1 ./internal/adapter/gitx/
 
 verify-tui: ## Run the TUI keymap, modal and overlay tests by name
@@ -30,6 +32,9 @@ verify-guards: ## Prove the golden guards fail — sabotages a throwaway copy, n
 
 verify-batch-guard: ## Prove the batched-input tests fail when either guard is removed
 	./scripts/verify-batch-guard.sh
+
+verify-waitdelay-guard: ## Prove the bounded-read test fails when the read bound is removed
+	./scripts/verify-waitdelay-guard.sh
 
 rebaseline-golden: ## Re-anchor the golden to current behaviour — reviewed behaviour changes only
 	go test -count=1 -v -run '^TestCharacterization$$' ./internal/app/ -rebaseline
@@ -43,3 +48,6 @@ run: build ## Launch the TUI against testdata/fixtures
 
 demo-git: build ## Build a throwaway workspace covering every git display state
 	./scripts/demo-git.sh
+
+demo-hung-git: build ## Build a throwaway workspace whose git never answers, to watch a read degrade
+	./scripts/demo-hung-git.sh

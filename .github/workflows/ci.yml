@@ -49,3 +49,9 @@ jobs:
       # removes each of handleKey's two guards in a throwaway copy and fails
       # unless the batch tests go red by name.
       - run: make verify-batch-guard
+      # TAE-62's read bound, the same class of claim: the deliverable is a git
+      # read that does not hang, which a green suite cannot demonstrate. This
+      # removes cmd.WaitDelay in a throwaway copy and fails unless the
+      # descendant-holds-the-pipe case goes red while the case that does not
+      # need the bound stays green.
+      - run: make verify-waitdelay-guard

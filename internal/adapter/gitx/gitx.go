@@ -137,6 +137,22 @@ func run(ctx context.Context, dir string, args ...string) result {
 
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Stdin = nil
+
+	// waitdelay-guard: the deadline alone does not bound the read.
+	//
+	// CommandContext kills git when ctx expires, but Wait then blocks on the
+	// captured stdout pipe below for as long as any descendant of git holds
+	// the write end open — and a killed parent does not close its children's
+	// copies. Without this the read never returns, past the deadline that
+	// exists to prevent exactly that (ADR-M003, TAE-62).
+	//
+	// It bounds two shapes, not one. When ctx expires the timer starts at
+	// cancellation, so the delay and the caller's deadline compose additively.
+	// When git instead exits cleanly and a descendant outlives it — the
+	// fsmonitor case — the timer starts at exit and ctx never fires at all,
+	// which is why the failure below is classified from err rather than from
+	// ctx.Err(). Both numbers and the total are at app.GitWaitDelay.
+	cmd.WaitDelay = app.GitWaitDelay
 	cmd.Env = append(os.Environ(),
 		"LC_ALL=C",
 		"LANG=C",
@@ -164,8 +180,18 @@ func run(ctx context.Context, dir string, args ...string) result {
 		if errors.As(err, &exitErr) {
 			res.exitCode = exitErr.ExitCode()
 		} else {
-			// git could not be started at all — not on PATH, or not
-			// executable. Not a repository state; a failed read.
+			// Either git could not be started at all — not on PATH, or not
+			// executable — or Wait gave up on the pipes after WaitDelay
+			// elapsed (exec.ErrWaitDelay), which is reported here rather than
+			// as an ExitError. Neither is a repository state; both are failed
+			// reads.
+			//
+			// The WaitDelay case is a failure deliberately, not by omission:
+			// output that arrived through a pipe closed under it may be
+			// truncated, and ADR-M003 forbids a read that cannot be trusted
+			// from degrading to anything other than unknown. Do not "tidy"
+			// this into a success path on the grounds that the exit code
+			// looked fine.
 			res.exitCode = -1
 			if res.stderr == "" {
 				res.stderr = err.Error()
