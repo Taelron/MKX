@@ -13,21 +13,65 @@ import (
 	"github.com/Gaetan-Jaminon/mkx/internal/domain"
 )
 
-// gitReadTimeout bounds one whole RepoState read — all three git commands,
-// not one deadline each. ADR-M003 requires captured reads to be bounded; the
-// AC asks for "a context with a timeout", singular. When the budget runs out
-// mid-sequence the next command fails immediately rather than spawning.
+// The git read budget, both halves.
 //
-// A warm local read of these commands is single-digit milliseconds. A cold or
-// very large working tree can push `status --porcelain` into the hundreds,
-// occasionally past a second on networked storage. The index-lock hazard is
-// eliminated by --no-optional-locks in the adapter rather than budgeted for
-// here. Two seconds is roughly two orders of magnitude above a warm read and
-// still short enough that a genuinely stuck read resolves while the user is
-// looking at the view.
+// They are declared together because neither number is the bound on its own.
+// The worst case a user can observe is their sum: 2.5 seconds from issuing a
+// read to the header degrading to unknown. Written in two places, the next
+// reader finds one of them and gets the total wrong — which is how TAE-62
+// stayed invisible while the deadline looked correct in isolation.
 //
-// Unexported and unconfigurable, per ADR-M004.
-const gitReadTimeout = 2 * time.Second
+// At most one wait delay is ever charged to a read, so the total is 2s + 500ms
+// and not 2s + three of them: every path that can incur the delay is a failure
+// path, and RepoState returns on the first failure rather than issuing the next
+// command.
+//
+// Both are compile-time constants. No flag, no environment variable, no file,
+// per ADR-M004.
+const (
+	// gitReadTimeout bounds one whole RepoState read — all three git commands,
+	// not one deadline each. ADR-M003 requires captured reads to be bounded; the
+	// AC asks for "a context with a timeout", singular. When the budget runs out
+	// mid-sequence the next command fails immediately rather than spawning.
+	//
+	// A warm local read of these commands is single-digit milliseconds. A cold or
+	// very large working tree can push `status --porcelain` into the hundreds,
+	// occasionally past a second on networked storage. The index-lock hazard is
+	// eliminated by --no-optional-locks in the adapter rather than budgeted for
+	// here. Two seconds is roughly two orders of magnitude above a warm read and
+	// still short enough that a genuinely stuck read resolves while the user is
+	// looking at the view.
+	//
+	// Unexported: nothing outside this package needs the number.
+	gitReadTimeout = 2 * time.Second
+
+	// GitWaitDelay bounds how long cmd.Wait may block once the git process
+	// itself is gone (TAE-62).
+	//
+	// Git ending does not end the read. The adapter captures output into a
+	// strings.Builder, so os/exec runs it through a pipe and a copying
+	// goroutine, and that goroutine cannot return while any descendant of git
+	// still holds the write end — a core.fsmonitor daemon, say. Without a
+	// delay Wait blocks on that pipe indefinitely, past the deadline whose
+	// entire purpose is to prevent an unbounded read.
+	//
+	// It covers two shapes. Killed at the deadline with a descendant left
+	// behind, where this is charged on top of the 2s above; and exited
+	// cleanly with a descendant left behind, where the deadline never fires
+	// and this is the only bound there is.
+	//
+	// Half a second, because in this failure mode waiting longer never rescues
+	// the read: the descendant holds the pipe for as long as it lives, so extra
+	// time only postpones the unknown state the caller is already owed. The
+	// floor is the time a healthy process that has exited needs to drain a
+	// local pipe — microseconds — so 500ms cannot turn a good read into a
+	// spurious unknown, and it absorbs SIGKILL delivery to a process that is
+	// momentarily unschedulable.
+	//
+	// Exported because the gitx adapter sets it on the command: the mechanism
+	// belongs to os/exec, the budget belongs to this layer.
+	GitWaitDelay = 500 * time.Millisecond
+)
 
 // App composes the ports into MkX's use cases. Constructed in cmd/mkx/main.go.
 type App struct {
