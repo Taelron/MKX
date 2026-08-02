@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -80,6 +81,36 @@ func (a *App) RunTarget(ctx context.Context, project domain.Project, targetName 
 // discovered before it is stale.
 func (a *App) PullAndRefresh(ctx context.Context, project domain.Project) (domain.Command, error) {
 	return domain.Command{Argv: []string{"git", "pull"}, WorkDir: project.Path}, nil
+}
+
+// CheckoutBranch returns the command that switches the project's repository to
+// the named branch.
+//
+// state is the RepoState the caller is acting on — the same value the UI drew
+// its options from, not a fresh read. Validating against the caller's snapshot
+// is what keeps the answer consistent with what the user was looking at; a
+// branch that has since disappeared from the repository is git's refusal to
+// report, not this function's to pre-empt.
+//
+// What it refuses is its own argument: an empty name, a repository with no
+// commits, and a branch the given state does not list. That is the same shape
+// as RunTarget refusing a target the Project does not declare.
+//
+// What it deliberately does not do is pre-validate the checkout. Per ADR-M003
+// MkX does not refuse on a dirty tree, does not stash, and does not offer
+// --force: a dirty state still yields a command, and git reports its own
+// outcome in its own words. The distinction is argument validation versus
+// checkout policy, and only the first belongs here.
+func (a *App) CheckoutBranch(ctx context.Context, project domain.Project, state domain.RepoState, branch string) (domain.Command, error) {
+	switch {
+	case branch == "":
+		return domain.Command{}, fmt.Errorf("project %q: no branch to check out", project.Name)
+	case state.Head == domain.HeadUnborn:
+		return domain.Command{}, fmt.Errorf("project %q has no commits yet, so it has no branches", project.Name)
+	case !slices.Contains(state.Branches, branch):
+		return domain.Command{}, fmt.Errorf("project %q has no local branch %q", project.Name, branch)
+	}
+	return domain.Command{Argv: []string{"git", "checkout", branch}, WorkDir: project.Path}, nil
 }
 
 // RefreshTargets re-discovers a project's targets after a handover.

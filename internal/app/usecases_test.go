@@ -227,6 +227,108 @@ func TestPullAndRefresh(t *testing.T) {
 	}
 }
 
+// TestCheckoutBranch checks the checkout descriptor and the three arguments
+// the use case refuses.
+func TestCheckoutBranch(t *testing.T) {
+	project := domain.Project{Name: "alpha", Path: "/w/alpha"}
+	onMain := domain.RepoState{
+		Head:     domain.HeadOnBranch,
+		Branch:   "main",
+		Branches: []string{"main", "feature"},
+	}
+	application := newApp(&fakeScanner{}, &fakeRunner{})
+
+	got, err := application.CheckoutBranch(context.Background(), project, onMain, "feature")
+	if err != nil {
+		t.Fatalf("CheckoutBranch: %v", err)
+	}
+	assertCommand(t, got, []string{"git", "checkout", "feature"}, "/w/alpha")
+
+	// The branch already checked out is not special-cased: git says "Already
+	// on 'main'" and that is a better answer than one MkX invents.
+	if _, err := application.CheckoutBranch(context.Background(), project, onMain, "main"); err != nil {
+		t.Errorf("CheckoutBranch onto the current branch: %v, want a command", err)
+	}
+
+	refusals := []struct {
+		name   string
+		state  domain.RepoState
+		branch string
+	}{
+		{
+			name:   "a branch the state does not list",
+			state:  onMain,
+			branch: "nope",
+		},
+		{
+			name:   "a repository with no commits",
+			state:  domain.RepoState{Head: domain.HeadUnborn},
+			branch: "main",
+		},
+		{
+			name:   "an empty branch name",
+			state:  onMain,
+			branch: "",
+		},
+	}
+
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd, err := application.CheckoutBranch(context.Background(), project, tt.state, tt.branch)
+			if err == nil {
+				t.Fatalf("got the command %+v, want a refusal", cmd)
+			}
+			if len(cmd.Argv) != 0 {
+				t.Errorf("a refusal still carried a command: %+v", cmd)
+			}
+		})
+	}
+}
+
+// TestCheckoutBranchDoesNotPreValidateTheCheckout is the distinction ADR-M003
+// draws, pinned so it cannot erode into "helpfully" refusing.
+//
+// Argument validation — is this a branch this state knows about — belongs in
+// the use case. Checkout policy does not: MkX must not refuse on a dirty tree,
+// must not stash, and must not offer --force. A dirty state that still yields a
+// command is what proves the first without the second, and git remains the sole
+// judge of whether the checkout can proceed.
+func TestCheckoutBranchDoesNotPreValidateTheCheckout(t *testing.T) {
+	project := domain.Project{Name: "alpha", Path: "/w/alpha"}
+	dirty := domain.RepoState{
+		Head:     domain.HeadOnBranch,
+		Branch:   "main",
+		Dirty:    true,
+		Branches: []string{"main", "feature"},
+	}
+
+	got, err := newApp(&fakeScanner{}, &fakeRunner{}).
+		CheckoutBranch(context.Background(), project, dirty, "feature")
+	if err != nil {
+		t.Fatalf("a dirty tree was refused: %v — ADR-M003 leaves that judgement to git", err)
+	}
+	assertCommand(t, got, []string{"git", "checkout", "feature"}, "/w/alpha")
+
+	for _, arg := range got.Argv {
+		if arg == "--force" || arg == "-f" || arg == "stash" {
+			t.Errorf("the command carries %q: %+v", arg, got.Argv)
+		}
+	}
+}
+
+// A detached HEAD has no current branch, and switching to one is a legitimate
+// escape rather than a state to refuse.
+func TestCheckoutBranchFromADetachedHead(t *testing.T) {
+	detached := domain.RepoState{Head: domain.HeadDetached, Branches: []string{"main"}}
+
+	got, err := newApp(&fakeScanner{}, &fakeRunner{}).CheckoutBranch(
+		context.Background(), domain.Project{Name: "alpha", Path: "/w/alpha"}, detached, "main")
+	if err != nil {
+		t.Fatalf("CheckoutBranch from a detached head: %v", err)
+	}
+	assertCommand(t, got, []string{"git", "checkout", "main"}, "/w/alpha")
+}
+
 // TestReadmePath checks the use case passes the project's directory — not its
 // name — through to the scanner, and reports "" for a project with no README.
 func TestReadmePath(t *testing.T) {

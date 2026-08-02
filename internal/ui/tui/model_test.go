@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Gaetan-Jaminon/mkx/internal/app"
@@ -118,7 +119,7 @@ func TestHintBarsMatchTheBaselineFormats(t *testing.T) {
 		{
 			name: "targets",
 			k:    targetKeymap(),
-			want: "↑↓/Navigate  //Search  Enter/Run  g/Pull  R/Readme  Esc/Back  ?/Help",
+			want: "↑↓/Navigate  //Search  Enter/Run  b/Branch  g/Pull  R/Readme  Esc/Back  ?/Help",
 		},
 	}
 
@@ -128,6 +129,38 @@ func TestHintBarsMatchTheBaselineFormats(t *testing.T) {
 				t.Errorf("hintBar() = %q\nwant           %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestTargetHintBarFitsOnOneLine is a width guard, not a formatting
+// preference.
+//
+// styles.HintBar is Width(80) with Padding(0,1), so it has 78 content columns —
+// and it is fixed at 80 regardless of the terminal, so the ceiling holds on a
+// 200-column terminal too. With b/Branch the target bar is exactly 78 of 78. At
+// 79 lipgloss word-wraps rather than truncating, the bar silently becomes two
+// rows, and every height-sensitive test in this suite breaks with no line in
+// the failure pointing at the cause.
+//
+// So the next binding added to this view fails here instead, loudly, saying
+// what to do about it. The underlying fixed width is TAE-60's to fix; this test
+// is what TAE-60 replaces, not what it deletes.
+func TestTargetHintBarFitsOnOneLine(t *testing.T) {
+	const barContentWidth = 78
+
+	if w := lipgloss.Width(ansi.Strip(targetKeymap().hintBar())); w > barContentWidth {
+		t.Errorf("the target hint bar is %d columns wide, and styles.HintBar has only %d; "+
+			"it will wrap to a second line. Shorten a label, drop a binding from the bar, "+
+			"or fix the fixed width (TAE-60) — do not just raise this number",
+			w, barContentWidth)
+	}
+
+	// The claim itself, through the real style rather than through arithmetic
+	// about it: one rendered line at 80 columns.
+	m := testModel()
+	m.width = 80
+	if n := strings.Count(m.renderHintBar(targetKeymap()), "\n"); n != 0 {
+		t.Errorf("the target hint bar rendered on %d lines at width 80, want 1", n+1)
 	}
 }
 
