@@ -1,7 +1,7 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-gitx verify-tui verify-guards verify-batch-guard verify-waitdelay-guard rebaseline-golden tidy-check run demo-git demo-hung-git
+.PHONY: build test verify verify-parser verify-gitx verify-tui verify-hintbar-widths verify-guards verify-batch-guard verify-waitdelay-guard verify-hintbar-guard rebaseline-golden tidy-check run demo-git demo-hung-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
@@ -27,6 +27,14 @@ verify-gitx: ## Run the git classifier tests and the bounded-read test
 verify-tui: ## Run the TUI keymap, modal and overlay tests by name
 	go test -v -count=1 ./internal/ui/tui/
 
+verify-hintbar-widths: ## Print the hint bar at every width in the table and assert it degrades rather than wraps
+	# -v is load-bearing here, not decoration: the subtests log the bar they
+	# rendered, and `go test` discards that output on a pass. The point of this
+	# target is to be READ — the degradation has to be legible, which is not
+	# something a green tick can show. Add new hintbar_test.go tests to this
+	# list, or they run only under verify-tui.
+	go test -v -count=1 -run '^(TestHintBarDegradesAcrossTheWidthTable|TestTargetBarMatchesTheComputedTable|TestFullViewHeightIsWidthInvariant|TestALongFlashDoesNotWrapTheBar|TestAFlashClaimsWidthAheadOfTheDroppableHints|TestTheFitIsExactAtEveryWidth|TestAFlashCarryingANewlineDoesNotBecomeASecondRow|TestTargetHintBarFitsAtTheSupportedMinimum)$$' ./internal/ui/tui/
+
 verify-guards: ## Prove the golden guards fail — sabotages a throwaway copy, never this tree
 	./scripts/verify-oracle-guards.sh
 
@@ -35,6 +43,9 @@ verify-batch-guard: ## Prove the batched-input tests fail when either guard is r
 
 verify-waitdelay-guard: ## Prove the bounded-read test fails when the read bound is removed
 	./scripts/verify-waitdelay-guard.sh
+
+verify-hintbar-guard: ## Prove the width table fails when the hint bar fit is removed, and only below 80
+	./scripts/verify-hintbar-guard.sh
 
 rebaseline-golden: ## Re-anchor the golden to current behaviour — reviewed behaviour changes only
 	go test -count=1 -v -run '^TestCharacterization$$' ./internal/app/ -rebaseline

@@ -364,14 +364,32 @@ func (m Model) View() string {
 }
 
 // renderHintBar renders a view's keymap as the bottom bar, with any flash
-// message appended. The key/Action formatting lives on keymap.hintBar; this
-// function only owns the flash and the bar's width.
+// message alongside it, on exactly one line at any terminal width.
+//
+// This function owns only the width. What survives a width too small to hold
+// everything, and in what order, is fitHintBar's — see hintbar.go for the claim
+// order and why the flash outranks the droppable hints.
+//
+// The sub-20 substitution matches renderProjectList and renderTargetList: below
+// that width the whole view renders at 80 columns and the terminal wraps it.
+// Without it the bar alone would degrade while the body above it did not, so
+// the view would disagree with itself about how wide it is.
 func (m Model) renderHintBar(k keymap) string {
-	bar := k.hintBar()
-	if m.flash != "" {
-		bar += "  " + styles.Flash.Render(m.flash)
+	w := m.width
+	if w < 20 {
+		w = 80
 	}
-	return styles.HintBar.Width(m.width).Render(bar)
+
+	// hintbar-guard: these two lines are the fix. verify-hintbar-guard.sh
+	// reverts them, in a throwaway copy, to the naive
+	// `styles.HintBar.Width(w).Render(bar)` over an untruncated bar, and
+	// requires the width table to go red at 79, 60 and 40 while staying green
+	// at 80. Rewording this comment without updating that script makes the
+	// script stop checking, and it fails loudly rather than passing quietly.
+	//
+	// w-2 is HintBar's Padding(0,1): the content width, not the terminal's.
+	bar := fitHintBar(k.barEntries(), w-2, m.flash)
+	return styles.HintBar.Width(w).Render(bar)
 }
 
 // renderHeader renders the top bar: the title on the left, the position
