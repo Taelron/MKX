@@ -1,10 +1,31 @@
 BINARY   := mkx
 FIXTURES := testdata/fixtures
 
-.PHONY: build test verify verify-parser verify-gitx verify-tui verify-hintbar-widths verify-guards verify-batch-guard verify-waitdelay-guard verify-hintbar-guard rebaseline-golden tidy-check run demo-git demo-hung-git
+# Install location. Both are overridable, so no machine's own layout is baked
+# into the repo: `make install PREFIX=/usr/local` or `make install BINDIR=/tmp/x`.
+# ?= rather than := so BINDIR keeps tracking PREFIX when only PREFIX is given.
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
+
+.PHONY: build install test verify verify-parser verify-gitx verify-tui verify-hintbar-widths verify-guards verify-batch-guard verify-waitdelay-guard verify-hintbar-guard rebaseline-golden tidy-check run demo-git demo-hung-git
 
 build: ## Compile the mkx binary
 	go build -o $(BINARY) ./cmd/mkx
+
+install: build ## Install the binary to $(BINDIR) — override PREFIX or BINDIR to put it elsewhere
+	# Depends on build rather than copying whatever ./mkx happens to be. An
+	# install target that ships a stale binary is worse than none: the copy on
+	# PATH is the one that gets run, and nothing about it says how old it is.
+	install -d $(BINDIR)
+	install -m 0755 $(BINARY) $(BINDIR)/$(BINARY)
+	@echo "installed $(BINDIR)/$(BINARY)"
+	@case ":$$PATH:" in \
+		*":$(BINDIR):"*) ;; \
+		*) echo "warning: $(BINDIR) is not on your PATH, so \`$(BINARY)\` will not resolve to it" ;; \
+	esac
+	@command -v $(BINARY) >/dev/null 2>&1 && \
+		[ "$$(command -v $(BINARY))" != "$(BINDIR)/$(BINARY)" ] && \
+		echo "warning: \`$(BINARY)\` resolves to $$(command -v $(BINARY)), not the copy just installed" || true
 
 test: ## Run the full test suite
 	go test ./...
