@@ -12,6 +12,30 @@ Linear is canonical. Everything below points at Linear rather than restating it;
 
 This file is updated when the active milestone changes, typically once per milestone closure.
 
+## Taelron AI Build Workflow
+
+This workspace runs the AI Build Workflow (Linear, Taelron Baselines). Read it at
+session start; your role prompt says which phase and steps are yours.
+
+- The PO is the notification. Claude Web (the PO Assistant) and Claude Code cannot
+  reach each other. Write the details to Linear first, then end your turn with a
+  short, ready-to-paste prompt for the other side: what changed, and where to read
+  it. Never wait for the PO to ask what is next. The PO does not read Linear.
+- Claude Code sessions message each other directly, without the PO.
+- Decisions for the PO are numbered, each with your recommendation and why. The PO
+  answers by number, or writes "ok go" to apply every recommendation.
+- Ask the PO product questions only. Decide technical questions yourself and record
+  them where the next reader will find them. Settle facts by measuring.
+- If it changes the issue or the plan, it goes on the issue, as a comment.
+- When you receive work, from the PO or by a message from another session, your
+  first action, before reading or doing anything else, is a pick-up event:
+  ~/.local/bin/taelron-trace with --event R --name "Picked up", --ball set to your
+  role, the phase and step you are starting, and in --next what you are about to do.
+- Send each trace event your role lists, when its step completes, with
+  ~/.local/bin/taelron-trace (product, milestone and issue come from your
+  handoff prompt). A failed send never blocks the work: say so in your handoff
+  prompt and carry on.
+
 ## ADRs are Web Claude's lane
 
 Claude Code **never authors Linear documents or ADRs** (@AI Workflow). Its Linear writes are limited to issue comments and review-gated `spec-drift` issues. If implementation surfaces a conflict with an ADR, follow the drift handling protocol in @Delivery Workflow — surface it, never silently diverge, and let Web Claude record the decision.
